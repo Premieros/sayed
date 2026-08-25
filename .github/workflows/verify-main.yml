@@ -31,8 +31,6 @@ jobs:
         run: if [ -f package-lock.json ]; then npm ci; else npm install; fi
       - run: npm run lint
       - run: npm run typecheck
-      - name: Install Playwright test runner for suite typechecking
-        run: npm install --no-save @playwright/test@1.55.0
       - name: Typecheck application and test suites
         run: npm run typecheck:all
       - run: npm run test:unit
@@ -80,8 +78,6 @@ jobs:
   browser-smoke:
     needs: [verify, db]
     runs-on: ubuntu-latest
-    container:
-      image: mcr.microsoft.com/playwright:v1.55.0-noble
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -90,9 +86,12 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: if [ -f package-lock.json ]; then npm ci; else npm install; fi
-      - run: npm install --no-save @playwright/test@1.55.0
-      - run: npm run build
-      - run: npx playwright test --project=chromium
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Build application
+        run: npm run build
+      - name: Run Playwright smoke tests
+        run: npx playwright test --project=chromium
       - uses: actions/upload-artifact@v4
         if: always()
         with:
