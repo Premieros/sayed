@@ -62,7 +62,7 @@ export function ProductBrowser({ products, categories, stockMap, sellableStock, 
                 <div className="mt-auto flex items-center justify-between gap-2 pt-2">
                   <span className="text-base font-black text-ui-accent">{formatCurrency(p.sale_price, currency, lang)}</span>
                   {!unavailable && <div className="flex items-center gap-1">
-                    {onConfigureProduct && <button type="button" onClick={(e) => { e.stopPropagation(); onConfigureProduct(p); }} title={isAr ? 'تخصيص الصنف' : 'Configure Item'} aria-label={isAr ? `تخصيص ${productLabel}` : `Configure ${productLabel}`} className="flex h-8 w-8 items-center justify-center rounded-xl border border-ui-border bg-ui-page-alt text-ui-muted hover:border-ui-primary hover:text-ui-accent transition"><SlidersHorizontal className="h-3.5 w-3.5" /></button>}
+                    {onConfigureProduct && <button type="button" onClick={(e) => { e.stopPropagation(); onConfigureProduct(p); }} title={isAr ? 'تخصيص الصنف' : 'Configure Item'} aria-label={isAr ? 'تخصيص الصنف' : 'Configure Item'} className="flex h-8 w-8 items-center justify-center rounded-xl border border-ui-border bg-ui-page-alt text-ui-muted hover:border-ui-primary hover:text-ui-accent transition"><SlidersHorizontal className="h-3.5 w-3.5" /></button>}
                     <button type="button" aria-label={productLabel} title={isAr ? `إضافة ${productLabel}` : `Add ${productLabel}`} onClick={() => onAddToCart(p)} className="flex h-8 w-8 items-center justify-center rounded-xl bg-ui-accent text-ui-primary-fg shadow-ui-sm hover:bg-ui-accent/90 active:scale-95 transition"><Plus className="h-4 w-4" /></button>
                   </div>}
                 </div>
