@@ -1,4 +1,5 @@
-﻿import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Download } from 'lucide-react';
 import { supabase } from '@/api';
 import * as api from '@/api';
 import { useLanguage } from '@/context/LanguageContext';
@@ -208,7 +209,11 @@ export function CostingCenterPage() {
   const tabBtn = (key: Tab, label: string) => (
     <button
       onClick={() => setTab(key)}
-      className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${tab === key ? 'bg-navy-600 text-white dark:bg-navy-500' : 'text-ui-subtle hover:bg-ui-page-alt'}`}
+      className={`px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 ${
+        tab === key
+          ? 'bg-ui-primary text-ui-primary-fg shadow-lg shadow-ui-primary/25 scale-[1.02]'
+          : 'liquid-glass text-ui-text hover:border-ui-primary/40 hover:bg-ui-surface/90'
+      }`}
     >
       {label}
     </button>
@@ -243,15 +248,21 @@ export function CostingCenterPage() {
         title={t('costingCenter')}
         subtitle={isAr ? 'تكلفة المنتجات وربحية المبيعات وأثر أسعار الموردين' : 'Product costing, sales margin and supplier price impact'}
         actions={
-          <div className="flex gap-2">
-            {tab === 'overview' && <Button variant="outline" size="sm" onClick={handleExportOverview}>{t('exportExcel')}</Button>}
-            {tab === 'orders' && <Button variant="outline" size="sm" onClick={handleExportOrders}>{t('exportExcel')}</Button>}
-            {tab === 'supplier' && <Button variant="outline" size="sm" onClick={handleExportSupplier}>{t('exportExcel')}</Button>}
-          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              if (tab === 'overview') handleExportOverview();
+              else if (tab === 'orders') handleExportOrders();
+              else if (tab === 'supplier') handleExportSupplier();
+            }}
+          >
+            <Download className="w-4 h-4" /> {t('exportExcel')}
+          </Button>
         }
       />
 
-      <div className="flex gap-1 bg-ui-page-alt rounded-xl p-1 w-fit mb-4" role="tablist">
+      <div className="flex gap-1.5 liquid-glass rounded-2xl p-1.5 w-fit mb-4" role="tablist">
         {tabBtn('overview', t('costingOverview'))}
         {tabBtn('orders', t('orderMargin'))}
         {tabBtn('supplier', t('supplierImpact'))}
@@ -261,15 +272,15 @@ export function CostingCenterPage() {
         <>
           <DesignPanel testId="costing-summary-panel">
             <div className="grid sm:grid-cols-3 gap-3">
-              <div className="rounded-ui-lg border border-ui-border bg-ui-page p-4">
+              <div className="rounded-xl border border-ui-border bg-ui-surface/60 p-4 shadow-sm">
                 <p className="text-xs font-medium text-ui-subtle uppercase tracking-wide">{t('product')}</p>
-                <p className="mt-1 text-2xl font-bold text-navy-600 dark:text-navy-300">{stats.count}</p>
+                <p className="mt-1 text-2xl font-bold text-ui-primary">{stats.count}</p>
               </div>
-              <div className="rounded-ui-lg border border-ui-border bg-ui-page p-4">
+              <div className="rounded-xl border border-ui-border bg-ui-surface/60 p-4 shadow-sm">
                 <p className="text-xs font-medium text-ui-subtle uppercase tracking-wide">{t('foodCostPct')}</p>
                 <p className="mt-1 text-2xl font-bold text-ui-text">{formatNumber(stats.avg, 1)}%</p>
               </div>
-              <div className="rounded-ui-lg border border-ui-border bg-ui-page p-4">
+              <div className="rounded-xl border border-ui-border bg-ui-surface/60 p-4 shadow-sm">
                 <p className="text-xs font-medium text-ui-subtle uppercase tracking-wide">{isAr ? 'أعلى تكلفة نسبة' : 'Highest cost ratio'}</p>
                 <p className="mt-1 truncate font-semibold text-ui-text">{stats.worst ? stats.worst.product_name : '-'}</p>
               </div>

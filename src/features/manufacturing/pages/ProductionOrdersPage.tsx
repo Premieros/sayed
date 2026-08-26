@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Plus, Play, CheckCircle2, XCircle, Trash2, Factory, PackageOpen } from 'lucide-react';
 import { supabase } from '@/api';
 import * as api from '@/api';
@@ -175,10 +175,10 @@ export function ProductionOrdersPage() {
 
   const statusPill = (status: string) => {
     const map: Record<string, string> = {
-      planned: 'bg-ui-page-alt text-ui-muted',
-      in_progress: 'bg-ui-warning-soft text-ui-warning',
-      completed: 'bg-ui-success-soft text-ui-success',
-      cancelled: 'bg-ui-danger-soft text-ui-danger',
+      planned: 'bg-ui-page-alt/70 text-ui-muted border border-ui-border',
+      in_progress: 'bg-ui-warning-soft text-ui-warning border border-ui-warning/30 shadow-[0_0_12px_rgba(245,158,11,0.15)]',
+      completed: 'bg-ui-success-soft text-ui-success border border-ui-success/30 shadow-[0_0_12px_rgba(16,185,129,0.15)]',
+      cancelled: 'bg-ui-danger-soft text-ui-danger border border-ui-danger/30',
     };
     const label: Record<string, string> = {
       planned: t('statusPlanned'),
@@ -186,7 +186,7 @@ export function ProductionOrdersPage() {
       completed: t('statusCompleted'),
       cancelled: t('statusCancelled'),
     };
-    return <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${map[status] || map.planned}`}>{label[status] || status}</span>;
+    return <span className={`px-2.5 py-1 rounded-full text-xs font-semibold backdrop-blur-sm transition-all ${map[status] || map.planned}`}>{label[status] || status}</span>;
   };
 
   const columns: Column<ProductionOrder>[] = [

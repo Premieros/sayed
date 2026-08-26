@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Plus, Edit2, Boxes, Layers, Trash2 } from 'lucide-react';
 import { supabase } from '@/api';
 import * as api from '@/api';
@@ -254,10 +254,10 @@ export function RawMaterialsPage() {
           <button
             key={tb.key}
             onClick={() => setTab(tb.key)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all ${
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 ${
               tab === tb.key
-                ? 'bg-navy-900 dark:bg-brand-600 text-white shadow-lg shadow-navy-900/20 dark:shadow-brand-600/30'
-                : 'bg-ui-surface dark:bg-navy-900 text-ui-muted hover:bg-ui-page-alt dark:hover:bg-navy-800 border border-ui-border dark:border-navy-800'
+                ? 'bg-ui-primary text-ui-primary-fg shadow-lg shadow-ui-primary/25 scale-[1.02]'
+                : 'liquid-glass text-ui-text hover:border-ui-primary/40 hover:bg-ui-surface/90'
             }`}
           >
             {tb.icon}

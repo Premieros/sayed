@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ClipboardCheck, Plus, Eye, Send, CheckCircle2, XCircle, CheckCheck, Trash2 } from 'lucide-react';
 import { supabase } from '@/api';
 import * as api from '@/api';
@@ -105,6 +105,15 @@ export function StockCountsPage() {
 
   const createCount = async () => {
     if (!form.branch_id || !form.warehouse_id) { show(t('required') + ': ' + t('branch') + ' / ' + t('warehouse'), 'error'); return; }
+    
+    // Check if there is already an active draft/submitted stock count for this warehouse
+    const hasActiveForWarehouse = counts.some(
+      (c) => c.warehouse_id === form.warehouse_id && (c.status === 'draft' || c.status === 'submitted')
+    );
+    if (hasActiveForWarehouse) {
+      show(isAr ? 'توجد بالفعل جلسة جرد قيد المعالجة (مسودة أو مرسلة) لهذا المستودع.' : 'An active stock count session already exists for this warehouse.', 'warning');
+    }
+
     const items = formItems
       .filter((l) => l.product_id)
       .map((l) => ({

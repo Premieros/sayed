@@ -1,4 +1,4 @@
-﻿import { type ReactNode } from 'react';
+import { type ReactNode } from 'react';
 
 export interface Column<T> {
   key: string;
@@ -77,7 +77,7 @@ export function DataTable<T extends { id?: string }>({ columns, data, loading, e
     <div data-testid="data-table" className="overflow-x-auto rounded-xl">
       <table className="w-full text-sm">
         <thead>
-          <tr className="border-b border-ui-border bg-ui-page-alt/50">
+          <tr className="border-b border-ui-border bg-ui-page-alt/70">
             {showCheckbox && (
               <th className="px-4 py-3 w-10">
                 <input type="checkbox" checked={allSelected} onChange={toggleAll}
@@ -102,7 +102,7 @@ export function DataTable<T extends { id?: string }>({ columns, data, loading, e
                 if (showCheckbox && (e.target as HTMLElement).closest('input[type="checkbox"]')) return;
                 onRowClick?.(row);
               }}
-              className={`hover:bg-ui-page-alt/50 transition-colors duration-150 ${onRowClick ? 'cursor-pointer' : ''} ${selectedIds?.has(row.id || '') ? 'bg-ui-primary-soft/50' : ''}`}
+              className={`hover:bg-ui-page-alt/60 transition-colors duration-150 ${onRowClick ? 'cursor-pointer' : ''} ${selectedIds?.has(row.id || '') ? 'bg-ui-primary-soft/50' : ''}`}
             >
               {showCheckbox && (
                 <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>

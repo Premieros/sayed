@@ -1,4 +1,4 @@
-﻿import { TrendingUp, ShoppingCart, Receipt, Package, BarChart3, CreditCard, Users, FileText, Layers, TrendingDown, AlertTriangle, BookOpen, Award, Factory, Clock, Wallet, Landmark, Star } from 'lucide-react';
+import { TrendingUp, ShoppingCart, Receipt, Package, BarChart3, CreditCard, Users, FileText, Layers, TrendingDown, AlertTriangle, BookOpen, Award, Factory, Clock, Wallet, Landmark, Star } from 'lucide-react';
 import type { ReportDefinition } from './reportRegistry';
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -21,10 +21,18 @@ export function ReportCard({ report, isActive, isFavorite, lang, onSelect, onTog
   const desc = lang === 'ar' ? report.description : report.descriptionEn;
 
   return (
-    <button
+    <div
+      role="button"
+      tabIndex={0}
       data-report-type={report.key}
       onClick={onSelect}
-      className={`group relative flex flex-col items-start gap-2 p-4 rounded-xl border text-start transition-all duration-150 ${
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onSelect();
+        }
+      }}
+      className={`group relative flex flex-col items-start gap-2 p-4 rounded-xl border text-start cursor-pointer transition-all duration-150 ${
         isActive
           ? 'bg-ui-primary/10 border-ui-primary shadow-ui-sm ring-1 ring-ui-primary/30'
           : 'bg-ui-surface border-ui-border hover:border-ui-primary/40 hover:shadow-ui-sm'
@@ -51,6 +59,6 @@ export function ReportCard({ report, isActive, isFavorite, lang, onSelect, onTog
       {isActive && (
         <div className="absolute top-2 start-2 w-1.5 h-1.5 rounded-full bg-ui-primary" />
       )}
-    </button>
+    </div>
   );
 }

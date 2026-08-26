@@ -1,4 +1,4 @@
-﻿import { type HTMLAttributes, type ReactNode } from 'react';
+import { type HTMLAttributes, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { ChevronRight } from 'lucide-react';
 import clsx from 'clsx';
@@ -52,7 +52,7 @@ export function Card({ children, className = '', ...rest }: CardProps) {
   return (
     <div
       className={clsx(
-        'bg-ui-surface rounded-ui-xl shadow-ui border border-ui-border',
+        'liquid-glass-card rounded-ui-xl transition-all duration-200',
         className
       )}
       {...rest}

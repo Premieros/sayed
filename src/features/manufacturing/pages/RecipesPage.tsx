@@ -1,5 +1,5 @@
-﻿import { useEffect, useState } from 'react';
-import { Plus, Edit2, Trash2, ChefHat } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Plus, Edit2, Trash2, ChefHat, Calculator } from 'lucide-react';
 import { supabase } from '@/api';
 import { useLanguage } from '@/context/LanguageContext';
 import { useToast } from '@/components/Toast';
@@ -12,7 +12,7 @@ import { Button } from '@/components/Button';
 import { Input, Select } from '@/components/Input';
 import { Modal } from '@/components/Modal';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
-import { formatNumber } from '@/lib/format';
+import { formatCurrency, formatNumber } from '@/lib/format';
 import { logAudit } from '@/lib/audit';
 import { usePaginatedRows } from '@/hooks/usePaginatedRows';
 import type { Recipe, RecipeItem, RawMaterial, Product, Branch, RecipeItemInput } from '@/lib/types';
@@ -156,6 +156,23 @@ export function RecipesPage() {
     reloadRecipes();
   };
 
+  const calculatedCost = useMemo(() => {
+    const rawCost = items.reduce((sum, it) => {
+      const mat = materials.find((m) => m.id === it.raw_material_id);
+      if (!mat || !it.quantity) return sum;
+      const unitCost = Number(mat.default_cost || 0);
+      const wastageMultiplier = 1 + (Number(it.wastage_percent || 0) / 100);
+      return sum + (unitCost * Number(it.quantity) * wastageMultiplier);
+    }, 0);
+    const yieldQty = Math.max(1, Number(form.yield_quantity || 1));
+    const costPerUnit = rawCost / yieldQty;
+    const selectedProd = products.find((p) => p.id === form.product_id);
+    const sellPrice = Number(selectedProd?.price || 0);
+    const foodCostRatio = sellPrice > 0 ? (costPerUnit / sellPrice) * 100 : 0;
+    const margin = sellPrice > 0 ? ((sellPrice - costPerUnit) / sellPrice) * 100 : 0;
+    return { rawCost, costPerUnit, sellPrice, foodCostRatio, margin };
+  }, [items, materials, form.yield_quantity, form.product_id, products]);
+
   const columns: Column<Recipe>[] = [
     { key: 'product', header: t('product'), render: (rc) => (
       <div className="flex items-center gap-2">
@@ -242,6 +259,40 @@ export function RecipesPage() {
                   </button>
                 </div>
               ))}
+            </div>
+          </div>
+
+          {/* Live Recipe Costing & Margin Engine Card */}
+          <div className="liquid-glass rounded-xl p-4 border border-ui-border shadow-sm">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="p-1.5 rounded-lg bg-ui-primary-soft text-ui-primary">
+                <Calculator className="w-4 h-4" />
+              </div>
+              <p className="text-sm font-bold text-ui-text">
+                {isAr ? 'التحليل المالي المباشر للوصفة (Live Costing)' : 'Live Recipe Costing & Profitability'}
+              </p>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+              <div className="p-2.5 rounded-lg bg-ui-surface/60 border border-ui-border">
+                <span className="text-xs text-ui-subtle block">{isAr ? 'إجمالي تكلفة المواد' : 'Total Batch Cost'}</span>
+                <span className="text-sm font-bold text-ui-text">{formatCurrency(calculatedCost.rawCost)}</span>
+              </div>
+              <div className="p-2.5 rounded-lg bg-ui-surface/60 border border-ui-border">
+                <span className="text-xs text-ui-subtle block">{isAr ? 'تكلفة الوحدة الواحدة' : 'Cost Per Unit'}</span>
+                <span className="text-sm font-bold text-ui-primary">{formatCurrency(calculatedCost.costPerUnit)}</span>
+              </div>
+              <div className="p-2.5 rounded-lg bg-ui-surface/60 border border-ui-border">
+                <span className="text-xs text-ui-subtle block">{isAr ? 'نسبة تكلفة الطعام' : 'Food Cost %'}</span>
+                <span className={`text-sm font-bold ${calculatedCost.foodCostRatio > 35 ? 'text-ui-danger' : calculatedCost.foodCostRatio > 0 ? 'text-ui-success' : 'text-ui-subtle'}`}>
+                  {calculatedCost.foodCostRatio > 0 ? `${formatNumber(calculatedCost.foodCostRatio, 1)}%` : '-'}
+                </span>
+              </div>
+              <div className="p-2.5 rounded-lg bg-ui-surface/60 border border-ui-border">
+                <span className="text-xs text-ui-subtle block">{isAr ? 'هامش الربح المتوقع' : 'Estimated Margin'}</span>
+                <span className={`text-sm font-bold ${calculatedCost.margin >= 60 ? 'text-ui-success' : calculatedCost.margin > 0 ? 'text-ui-warning' : 'text-ui-subtle'}`}>
+                  {calculatedCost.margin > 0 ? `${formatNumber(calculatedCost.margin, 1)}%` : '-'}
+                </span>
+              </div>
             </div>
           </div>
 

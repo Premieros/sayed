@@ -31,9 +31,9 @@ export function CenterTile({ item, testIdPrefix }: CenterTileProps) {
       data-testid={`${testIdPrefix}-${item.id}`}
       type="button"
       onClick={() => navigate(item.route)}
-      className="group relative rounded-2xl border border-ui-border bg-ui-surface p-5 text-start shadow-ui-sm transition-all hover:-translate-y-0.5 hover:border-ui-primary hover:shadow-ui-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ui-ring"
+      className="group relative rounded-2xl liquid-glass-card p-5 text-start shadow-ui-sm transition-all duration-200 hover:-translate-y-1 hover:border-ui-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ui-ring"
     >
-      <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-ui-primary-soft text-ui-primary transition-colors group-hover:bg-ui-primary group-hover:text-ui-primary-fg">
+      <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-ui-primary-soft text-ui-primary transition-all duration-200 group-hover:scale-105 group-hover:bg-ui-primary group-hover:text-ui-primary-fg group-hover:shadow-[0_4px_14px_rgba(91,43,216,0.25)]">
         <Icon className="h-5 w-5" />
       </div>
       <h3 className="font-bold text-ui-text">{ar ? (item.ar ?? item.en) : (item.en ?? item.ar)}</h3>

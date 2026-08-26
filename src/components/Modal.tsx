@@ -33,10 +33,10 @@ export function Modal({ open, onClose, title, children, size = 'md' }: ModalProp
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 animate-fade-in">
-      <div className="absolute inset-0 bg-ui-text/40 backdrop-blur-sm" onClick={onClose} aria-hidden="true" />
+      <div className="absolute inset-0 bg-ui-text/40 backdrop-blur-md" onClick={onClose} aria-hidden="true" />
       <div
         ref={modalRef}
-        className={`relative w-full ${sizes[size]} bg-ui-surface rounded-ui-xl shadow-ui-xl ring-1 ring-ui-border max-h-[90vh] flex flex-col animate-scale-in`}
+        className={`relative w-full ${sizes[size]} liquid-glass-card rounded-ui-xl shadow-2xl max-h-[90vh] flex flex-col animate-scale-in`}
         role="dialog"
         aria-modal="true"
         aria-label={title}
