@@ -1,144 +1,91 @@
-﻿import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import {
-  Save, Store, Receipt, Palette, ShoppingCart, FileText, Boxes, ShieldCheck,
-  Building2, Trash2, Plus, FlaskConical, Search, SlidersHorizontal, Users,
-  Wrench, Package, Bike, ChefHat, Calculator, Bell, Activity,
-  Link2, Settings2, Check, Languages, Table2, ListOrdered,
+  Palette,
+  Languages,
+  CreditCard,
+  Store,
+  Users,
+  ShieldAlert,
+  Sparkles,
+  Save,
+  Check,
+  Loader2,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { supabase, admin } from '@/api';
+import { supabase } from '@/api';
+import * as api from '@/api';
 import { useLanguage } from '@/context/LanguageContext';
 import { useTheme } from '@/context/ThemeContext';
+import { useAuth } from '@/context/AuthContext';
 import { useSettings } from '@/context/SettingsContext';
 import { useBranches } from '@/hooks/useBranches';
 import { useToast } from '@/components/Toast';
-import { PageHeader, Card } from '@/components/PageHeader';
+import { Card } from '@/components/PageHeader';
 import { Button } from '@/components/Button';
 import { Input, Select, Textarea } from '@/components/Input';
-import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { logAudit } from '@/lib/audit';
-import { BRAND_PRESETS, applyBrandColor, brandFromSettingsValue } from '@/lib/brandColor';
 import { findUiTheme, UI_THEMES } from '@/lib/themes';
-import type { Settings as SettingsType, BranchSettings } from '@/lib/types';
-import { RolesTab } from './RolesTab';
+import { formatCurrency, formatDate } from '@/lib/format';
+import type { BranchSettings, SubscriptionPlan, SubscriptionStatus } from '@/lib/types';
+import { APP_ROUTES } from '@/core/navigation/routes';
 
-type FieldType = 'text' | 'number' | 'select' | 'toggle' | 'textarea';
-type FieldDef = {
-  key: keyof SettingsType;
-  label: string;
-  type: FieldType;
-  options?: { value: string; label: string }[];
-  help?: string;
-  step?: string;
-  min?: number;
-  max?: number;
-};
-type SectionKind = 'fields' | 'appearance' | 'language' | 'branches' | 'roles' | 'system' | 'info';
-type SectionDef = {
-  key: string;
-  label: string;
-  icon: React.ReactNode;
-  kind: SectionKind;
-  fields?: FieldDef[];
-  note?: string;
-};
+type SettingsTab = 'branch_profile' | 'branch_subscription' | 'branch_staff' | 'appearance' | 'language';
 
-const SECTIONS: SectionDef[] = [
-  { key: 'general', label: 'عام / الشركة', icon: <Store className="w-4 h-4" />, kind: 'fields', fields: [
-    { key: 'store_name', label: 'اسم المتجر', type: 'text' },
-    { key: 'store_address', label: 'عنوان المتجر', type: 'text' },
-    { key: 'store_phone', label: 'هاتف المتجر', type: 'text' },
-    { key: 'logo_url', label: 'شعار (رابط صورة)', type: 'text' },
-    { key: 'currency', label: 'العملة', type: 'text' },
-  ] },
-  { key: 'appearance', label: 'المظهر / الثيم', icon: <Palette className="w-4 h-4" />, kind: 'appearance' },
-  { key: 'language', label: 'اللغة / التوطين', icon: <Languages className="w-4 h-4" />, kind: 'language' },
-  { key: 'pos', label: 'نقطة البيع والمبيعات', icon: <ShoppingCart className="w-4 h-4" />, kind: 'fields', fields: [
-    { key: 'pos_default_payment_method', label: 'طريقة الدفع الافتراضية', type: 'select', options: [
-      { value: 'cash', label: 'نقدي' }, { value: 'card', label: 'بطاقة' }, { value: 'transfer', label: 'تحويل' }, { value: 'credit', label: 'آجل' },
-    ] },
-    { key: 'pos_barcode_autofocus', label: 'تركيز تلقائي على الباركود', type: 'toggle', help: 'يُركز مؤشر الإدخال على حقل البحث/الباركود تلقائيًا عند فتح نقطة البيع' },
-  ] },
-  { key: 'orderTypes', label: 'أنواع الطلبات وسير العمل', icon: <ListOrdered className="w-4 h-4" />, kind: 'info', note: 'سلوك أنواع الطلبات والطلب الافتراضي يتبع إعدادات نقطة البيع، ويتم إدارته من شاشة البيع نفسها.' },
-  { key: 'floorPlan', label: 'الطاولات / خريطة الصالة', icon: <Table2 className="w-4 h-4" />, kind: 'info', note: 'تُدار الطاولات وحالة خريطة الصالة من شاشة الطاولات.' },
-  { key: 'invoices', label: 'الفواتير والضريبة', icon: <FileText className="w-4 h-4" />, kind: 'fields', fields: [
-    { key: 'tax_rate', label: 'نسبة الضريبة %', type: 'number', step: '0.01' },
-    { key: 'tax_enabled', label: 'تفعيل الضريبة', type: 'select', options: [{ value: '1', label: 'نعم' }, { value: '0', label: 'لا' }] },
-  ] },
-  { key: 'receipt', label: 'الإيصالات والطباعة', icon: <Receipt className="w-4 h-4" />, kind: 'fields', fields: [
-    { key: 'receipt_width_mm', label: 'مقاس الورق (مم)', type: 'select', options: [{ value: '58', label: '58 مم' }, { value: '80', label: '80 مم' }] },
-    { key: 'receipt_copies', label: 'عدد النسخ', type: 'number', min: 1, max: 5 },
-    { key: 'receipt_show_tax', label: 'إظهار الضريبة', type: 'toggle' },
-    { key: 'receipt_show_qr', label: 'إظهار رمز QR', type: 'toggle' },
-    { key: 'receipt_auto_print', label: 'طباعة تلقائية بعد البيع', type: 'toggle' },
-    { key: 'receipt_header', label: 'ترويسة الإيصال', type: 'textarea' },
-    { key: 'receipt_footer', label: 'تذييل الإيصال', type: 'textarea' },
-  ] },
-  { key: 'inventory', label: 'المخزون والمستودعات', icon: <Boxes className="w-4 h-4" />, kind: 'fields', fields: [
-    { key: 'low_stock_threshold', label: 'حد المخزون المنخفض', type: 'number', step: '0.5', min: 0 },
-  ] },
-  { key: 'purchasing', label: 'المشتريات', icon: <Package className="w-4 h-4" />, kind: 'info', note: 'لا توجد إعدادات عامة إضافية حاليًا؛ تُدار المشتريات من شاشة المشتريات.' },
-  { key: 'production', label: 'الإنتاج / الوصفات', icon: <Wrench className="w-4 h-4" />, kind: 'info', note: 'تُدار الوصفات وأوامر الإنتاج من شاشات التصنيع.' },
-  { key: 'delivery', label: 'التوصيل والسائقون', icon: <Bike className="w-4 h-4" />, kind: 'info', note: 'بيانات التوصيل تُدخل مع الطلب من شاشة البيع.' },
-  { key: 'kitchen', label: 'المطبخ / KDS', icon: <ChefHat className="w-4 h-4" />, kind: 'info', note: 'تُدار إرسالات المطبخ من شاشة البيع. محطات المطبخ تُدار من صفحة محطات المطبخ.' },
-  { key: 'customers', label: 'العملاء والولاء', icon: <Users className="w-4 h-4" />, kind: 'info', note: 'تُدار بيانات العملاء من شاشة العملاء.' },
-  { key: 'discounts', label: 'الخصومات والعروض', icon: <Activity className="w-4 h-4" />, kind: 'info', note: 'الخصم متاح من شاشة البيع (خصم كلي على الطلب).' },
-  { key: 'accounting', label: 'المحاسبة / الخزينة', icon: <Calculator className="w-4 h-4" />, kind: 'info', note: 'تُدار الحسابات والقيود والخزينة من شاشات المحاسبة.' },
-  { key: 'branches', label: 'تجاوزات الفروع', icon: <Building2 className="w-4 h-4" />, kind: 'branches' },
-  { key: 'roles', label: 'المستخدمون / الأدوار / الأمان', icon: <ShieldCheck className="w-4 h-4" />, kind: 'roles' },
-  { key: 'notifications', label: 'الإشعارات', icon: <Bell className="w-4 h-4" />, kind: 'info', note: 'لا توجد إعدادات إشعارات عامة حاليًا.' },
-  { key: 'system', label: 'النظام / الصيانة', icon: <Settings2 className="w-4 h-4" />, kind: 'system' },
-];
-
-function rgbToHex(hue: number, sat: number): string {
-  const n = (x: number) => Math.round(x * 255).toString(16).padStart(2, '0');
-  const s = sat / 100;
-  const l = 42 / 100;
-  const c = (1 - Math.abs(2 * l - 1)) * s;
-  const hp = ((hue % 360) + 360) % 360 / 60;
-  const x = c * (1 - Math.abs((hp % 2) - 1));
-  let r = 0, g = 0, b = 0;
-  if (hp < 1) [r, g, b] = [c, x, 0];
-  else if (hp < 2) [r, g, b] = [x, c, 0];
-  else if (hp < 3) [r, g, b] = [0, c, x];
-  else if (hp < 4) [r, g, b] = [0, x, c];
-  else if (hp < 5) [r, g, b] = [x, 0, c];
-  else [r, g, b] = [c, 0, x];
-  const m = l - c / 2;
-  return '#' + n(r + m) + n(g + m) + n(b + m);
+interface UserRow {
+  id: string;
+  full_name: string;
+  email: string;
+  role: string;
+  is_active: boolean;
 }
 
 export function SettingsControlCenterPage() {
+  const { user } = useAuth();
   const { t, lang, setLang } = useLanguage();
-  const { setTheme, setUiTheme } = useTheme();
-  const { settings, branchSettingsMap, save, saveBranchSettings } = useSettings();
+  const { theme, setTheme, setUiTheme } = useTheme();
+  const { branchSettingsMap, saveBranchSettings } = useSettings();
   const { branches } = useBranches();
   const { show } = useToast();
   const isAr = lang === 'ar';
-  const [active, setActive] = useState('general');
-  const [query, setQuery] = useState('');
+
+  const isSuperAdmin = user?.role === 'super_admin' || user?.role === 'owner';
+
+  // Section tabs
+  const [active, setActive] = useState<SettingsTab>('branch_profile');
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState<SettingsType | null>(null);
-  const [branchId, setBranchId] = useState('');
+
+  // Branch override / edit state
+  const myBranchId = user?.branch_id || (branches[0]?.id ?? '');
+  const [selectedBranchId, setSelectedBranchId] = useState<string>(myBranchId);
   const [branchForm, setBranchForm] = useState<Partial<BranchSettings>>({});
-  const [brandHex, setBrandHex] = useState('');
-  const [customBrand, setCustomBrand] = useState('');
-  const [demoBusy, setDemoBusy] = useState(false);
-  const [demoConfirmOpen, setDemoConfirmOpen] = useState(false);
 
-  useEffect(() => {
-    if (!settings) return;
-    setForm((prev) => prev ?? { ...settings });
-    const uiPreset = findUiTheme(settings.brand_color || '');
-    const brand = uiPreset ? { hue: uiPreset.brandHue, sat: uiPreset.brandSat } : brandFromSettingsValue(settings.brand_color || '');
-    setBrandHex(rgbToHex(brand.hue, brand.sat));
-  }, [settings]);
+  // Branch subscription state
+  const [branchSubStatus, setBranchSubStatus] = useState<SubscriptionStatus | null>(null);
+  const [publicPlans, setPublicPlans] = useState<SubscriptionPlan[]>([]);
+  const [gatewaySettings, setGatewaySettings] = useState<{
+    instapay_id: string | null;
+    beneficiary_name: string | null;
+    qr_code_url: string | null;
+    instructions_ar: string | null;
+    instructions_en: string | null;
+  } | null>(null);
+  const [selectedUpgradePlan, setSelectedUpgradePlan] = useState<SubscriptionPlan | null>(null);
+  const [upgradeCycle, setUpgradeCycle] = useState<'monthly' | 'yearly'>('monthly');
+  const [paymentRef, setPaymentRef] = useState('');
+  const [receiptUrl, setReceiptUrl] = useState('');
+  const [submittingPayment, setSubmittingPayment] = useState(false);
 
+  // Branch staff state
+  const [branchStaff, setBranchStaff] = useState<UserRow[]>([]);
+  const [loadingStaff, setLoadingStaff] = useState(false);
+
+  // Load branch specific form data
+  const targetBranchId = selectedBranchId || myBranchId;
   useEffect(() => {
-    if (branchId && branches.length) {
-      const row = branchSettingsMap[branchId] || null;
+    if (targetBranchId) {
+      const row = branchSettingsMap[targetBranchId] || null;
       setBranchForm({
-        branch_id: branchId,
+        branch_id: targetBranchId,
         receipt_header: row?.receipt_header ?? '',
         receipt_footer: row?.receipt_footer ?? '',
         logo_url: row?.logo_url ?? '',
@@ -148,69 +95,50 @@ export function SettingsControlCenterPage() {
         low_stock_threshold: row?.low_stock_threshold ?? null,
       });
     }
-  }, [branchId, branchSettingsMap, branches.length]);
+  }, [targetBranchId, branchSettingsMap]);
 
-  const current = SECTIONS.find((s) => s.key === active) || SECTIONS[0];
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return SECTIONS;
-    return SECTIONS.filter((s) => `${s.label} ${(s.fields || []).map((f) => f.label).join(' ')}`.toLowerCase().includes(q));
-  }, [query]);
+  // Load branch subscription data & public plans
+  const loadBranchSubData = useCallback(async () => {
+    if (!targetBranchId) return;
+    const [stRes, plansRes, sRes] = await Promise.all([
+      api.subscriptions.status({ p_branch_id: targetBranchId }),
+      api.subscriptions.listPlans(),
+      supabase.rpc('subscription_settings_get'),
+    ]);
+    if (!stRes.error && stRes.data) setBranchSubStatus(stRes.data);
+    if (!plansRes.error && plansRes.data) setPublicPlans(plansRes.data);
+    if (!sRes.error && sRes.data) setGatewaySettings(sRes.data as never);
+  }, [targetBranchId]);
 
-  const set = <K extends keyof SettingsType>(k: K, v: SettingsType[K]) => {
-    if (!form) return;
-    setForm({ ...form, [k]: v });
-  };
+  // Load branch staff
+  const loadBranchStaff = useCallback(async () => {
+    if (!targetBranchId) return;
+    setLoadingStaff(true);
+    const { data, error } = await supabase
+      .from('users')
+      .select('id, full_name, email, role, is_active')
+      .eq('branch_id', targetBranchId)
+      .order('full_name');
+    setLoadingStaff(false);
+    if (!error && data) {
+      setBranchStaff(data as UserRow[]);
+    }
+  }, [targetBranchId]);
 
-  const pickPreset = (key: string) => {
-    const p = BRAND_PRESETS.find((x) => x.key === key);
-    if (!p) return;
-    applyBrandColor(p.hue, p.sat);
-    setBrandHex(rgbToHex(p.hue, p.sat));
-    set('brand_color', key);
-    setCustomBrand('');
-  };
+  useEffect(() => {
+    if (active === 'branch_subscription') void loadBranchSubData();
+    if (active === 'branch_staff') void loadBranchStaff();
+  }, [active, loadBranchSubData, loadBranchStaff]);
 
   const pickTheme = (key: string) => {
     const p = findUiTheme(key);
     if (!p) return;
     setUiTheme(key);
-    set('brand_color', key);
-    set('theme', p.mode);
     setTheme(p.mode);
-    setBrandHex(rgbToHex(p.brandHue, p.brandSat));
-    setCustomBrand('');
   };
 
-  const applyCustomHex = (hex: string) => {
-    const m = /^#([0-9a-fA-F]{6})$/.exec(hex);
-    if (!m) return;
-    const brand = brandFromSettingsValue(hex);
-    applyBrandColor(brand.hue, brand.sat);
-    setBrandHex(hex);
-    set('brand_color', hex);
-  };
-
-  const saveAll = async () => {
-    if (!form || !settings) return;
-    setSaving(true);
-    const ok = await save({
-      ...form,
-      tax_rate: Number(form.tax_rate) || 0,
-      low_stock_threshold: Number(form.low_stock_threshold) || 0,
-      receipt_copies: Math.min(5, Math.max(1, Number(form.receipt_copies) || 1)),
-    });
-    if (ok) {
-      await logAudit('update', 'settings', settings.id);
-      show(isAr ? 'تم حفظ الإعدادات' : 'Settings saved', 'success');
-    } else {
-      show(isAr ? 'فشل حفظ الإعدادات' : 'Failed to save settings', 'error');
-    }
-    setSaving(false);
-  };
-
-  const saveBranch = async () => {
-    if (!branchId) return;
+  const saveBranchSpecific = async () => {
+    if (!targetBranchId) return;
     setSaving(true);
     const patch: Partial<BranchSettings> = {
       receipt_header: branchForm.receipt_header || null,
@@ -219,367 +147,479 @@ export function SettingsControlCenterPage() {
       tax_rate: branchForm.tax_rate != null && !Number.isNaN(branchForm.tax_rate) ? branchForm.tax_rate : null,
       tax_enabled: branchForm.tax_enabled ?? null,
       currency: branchForm.currency || null,
-      low_stock_threshold: branchForm.low_stock_threshold != null && !Number.isNaN(branchForm.low_stock_threshold) ? branchForm.low_stock_threshold : null,
+      low_stock_threshold:
+        branchForm.low_stock_threshold != null && !Number.isNaN(branchForm.low_stock_threshold)
+          ? branchForm.low_stock_threshold
+          : null,
     };
-    const ok = await saveBranchSettings(branchId, patch);
+    const ok = await saveBranchSettings(targetBranchId, patch);
     if (ok) {
-      await logAudit('update', 'branch_settings', branchId);
-      show(isAr ? 'تم حفظ إعدادات الفرع' : 'Branch settings saved', 'success');
+      await logAudit('update', 'branch_settings', targetBranchId);
+      show(isAr ? 'تم حفظ إعدادات الفرع بنجاح' : 'Branch settings saved successfully', 'success');
     } else {
       show(isAr ? 'فشل حفظ إعدادات الفرع' : 'Failed to save branch settings', 'error');
     }
     setSaving(false);
   };
 
-  const clearBranchSettings = async () => {
-    if (!branchId || !branchSettingsMap[branchId]) return;
-    setSaving(true);
-    const { error } = await supabase.from('branch_settings').delete().eq('branch_id', branchId);
-    if (!error) show(isAr ? 'تمت إعادة تعيين إعدادات الفرع إلى الإعدادات العامة' : 'Branch settings reset to global', 'success');
-    else show(error.message, 'error');
-    setSaving(false);
+  // Submit payment for branch manager
+  const submitBranchPayment = async () => {
+    if (!selectedUpgradePlan || !targetBranchId) return;
+    setSubmittingPayment(true);
+    const price =
+      upgradeCycle === 'yearly'
+        ? selectedUpgradePlan.yearly_price_egp
+        : selectedUpgradePlan.monthly_price_egp;
+
+    const { data, error } = await supabase.rpc('submit_instapay_payment', {
+      p_branch_id: targetBranchId,
+      p_plan_id: selectedUpgradePlan.id,
+      p_amount: price,
+      p_billing_period: upgradeCycle,
+      p_reference: paymentRef || null,
+      p_receipt_url: receiptUrl || null,
+    });
+
+    setSubmittingPayment(false);
+    if (error || !(data as { success?: boolean })?.success) {
+      show((data as { error?: string })?.error || error?.message || 'Payment submission failed', 'error');
+      return;
+    }
+
+    show(
+      isAr
+        ? 'تم إرسال إشعار الدفع بنجاح! سيتم تفعيل الباقة فور مراجعة التحويل'
+        : 'Payment proof submitted! Subscription will be activated upon review',
+      'success'
+    );
+    setSelectedUpgradePlan(null);
+    setPaymentRef('');
+    setReceiptUrl('');
+    void loadBranchSubData();
   };
 
-  const handleSeedDemo = async () => {
-    if (!branchId) return;
-    setDemoBusy(true);
-    const { data, error } = await admin.seedDemoData({ p_branch_id: branchId });
-    setDemoBusy(false);
-    if (error) { show(error.message, 'error'); return; }
-    const res = data as { success?: boolean; seeded?: number; existing?: boolean } | null;
-    if (!res?.success) { show(isAr ? 'تعذر إضافة البيانات التجريبية' : 'Failed to add demo data', 'error'); return; }
-    if (res.existing) { show(t('demoAlreadyExists'), 'info'); return; }
-    await logAudit('create', 'demo_data', branchId, { action: 'seed' });
-    show(t('demoSeeded'), 'success');
-  };
-
-  const handleDeleteDemo = async () => {
-    if (!branchId) return;
-    setDemoBusy(true);
-    const { data, error } = await admin.deleteDemoData({ p_branch_id: branchId });
-    setDemoBusy(false);
-    if (error) { show(error.message, 'error'); return; }
-    const res = data as { success?: boolean } | null;
-    if (!res?.success) { show(isAr ? 'تعذر حذف البيانات التجريبية' : 'Failed to delete demo data', 'error'); return; }
-    await logAudit('delete', 'demo_data', branchId, { action: 'delete' });
-    show(t('demoDeleted'), 'success');
-  };
-
-  if (!form) {
-    return <div className="flex items-center justify-center py-24"><div className="animate-spin rounded-full h-10 w-10 border-b-2 border-brand-600" /></div>;
-  }
-
-  const selectedBranch = branches.find((b) => b.id === branchId);
+  const SECTIONS: { key: SettingsTab; label: string; icon: React.ReactNode }[] = [
+    { key: 'branch_profile', label: isAr ? 'بيانات الفرع والطباعة' : 'Branch Profile & Receipts', icon: <Store className="w-4 h-4" /> },
+    { key: 'branch_subscription', label: isAr ? 'اشتراك الفرع والترقية' : 'Branch Subscription', icon: <CreditCard className="w-4 h-4" /> },
+    { key: 'branch_staff', label: isAr ? 'طاقم عمل الفرع' : 'Branch Staff', icon: <Users className="w-4 h-4" /> },
+    { key: 'appearance', label: isAr ? 'المظهر والثيم' : 'Appearance & Theme', icon: <Palette className="w-4 h-4" /> },
+    { key: 'language', label: isAr ? 'اللغة والتوطين' : 'Language', icon: <Languages className="w-4 h-4" /> },
+  ];
 
   return (
-    <div className="space-y-5 pb-10">
-      <PageHeader
-        title={t('settings')}
-        subtitle={isAr ? 'مركز التحكم الموحد — كل إعداد معروض موصول بمستهلك فعلي' : 'Unified Settings Control Center — every setting is wired to a real consumer'}
-        actions={(
-          <Button onClick={saveAll} disabled={saving}>
-            <Save className="w-4 h-4" /> {t('save')}
-          </Button>
+    <div className="space-y-6">
+      {/* Super Admin Notice Banner */}
+      {isSuperAdmin && (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-2xl bg-gradient-to-r from-brand-600/15 via-indigo-600/10 to-transparent border border-brand-500/30">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-600 text-white shadow-sm">
+              <ShieldAlert className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="font-bold text-sm text-ui-text">
+                {isAr ? 'أنت مسجل بصلاحية المدير العام (Super Admin)' : 'You are logged in as Super Admin'}
+              </p>
+              <p className="text-xs text-ui-subtle">
+                {isAr
+                  ? 'لإدارة كافة إعدادات المنشأة المركزية، المنظمات، الأسعار والاشتراكات، والصلاحيات الكاملة، تفضل بزيارة لوحة المدير العام'
+                  : 'Manage master enterprise settings, tenant organizations, subscription pricing, and full RBAC matrix in the Super Admin hub'}
+              </p>
+            </div>
+          </div>
+          <Link to={APP_ROUTES.superAdmin}>
+            <Button size="sm" className="whitespace-nowrap">
+              <Sparkles className="w-4 h-4" />
+              <span>{isAr ? 'لوحة تحكم المدير العام' : 'Super Admin Hub'}</span>
+            </Button>
+          </Link>
+        </div>
+      )}
+
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-ui-border pb-4">
+        <div>
+          <h1 className="text-2xl font-black text-ui-text tracking-tight">{t('settings')}</h1>
+          <p className="text-xs text-ui-subtle mt-0.5">
+            {isAr ? 'إدارة وتخصيص إعدادات الفرع، الإيصالات، المظهر، واشتراك المنشأة' : 'Manage branch configurations, receipts, appearance, and subscriptions'}
+          </p>
+        </div>
+
+        {branches.length > 1 && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-ui-subtle">{isAr ? 'الفرع:' : 'Branch:'}</span>
+            <div className="w-52">
+              <Select
+                value={selectedBranchId}
+                onChange={(e) => setSelectedBranchId(e.target.value)}
+                options={branches.map((b) => ({ value: b.id, label: isAr ? b.name : b.name_en || b.name }))}
+              />
+            </div>
+          </div>
         )}
-      />
+      </div>
 
-      <div className="grid gap-5 lg:grid-cols-[280px_1fr]">
-        {/* Sidebar */}
-        <Card className="h-fit p-3">
-          <div className="relative mb-3">
-            <Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ui-subtle" />
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder={isAr ? 'بحث في الإعدادات...' : 'Search settings...'}
-              className="w-full rounded-xl border border-ui-border bg-ui-page-alt ps-9 pe-3 py-2 text-sm outline-none focus:border-brand-500 dark:border-navy-700 dark:bg-navy-800"
-            />
-          </div>
-          <div className="space-y-1">
-            {filtered.map((s) => (
-              <button
-                key={s.key}
-                onClick={() => setActive(s.key)}
-                className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-start text-sm font-semibold transition ${
-                  active === s.key
-                    ? 'bg-brand-600 text-white shadow'
-                    : 'text-ui-muted hover:bg-ui-page-alt dark:hover:bg-navy-800'
-                }`}
-              >
-                {s.icon}
-                <span className="flex-1">{s.label}</span>
-                {s.kind === 'info' && <SlidersHorizontal className="h-3.5 w-3.5 opacity-50" />}
-              </button>
-            ))}
-          </div>
-        </Card>
+      {/* Navigation and Content Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        {/* Sidebar Tabs */}
+        <div className="space-y-1 md:col-span-1">
+          {SECTIONS.map((sec) => (
+            <button
+              key={sec.key}
+              onClick={() => setActive(sec.key)}
+              className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-sm font-semibold transition text-start ${
+                active === sec.key
+                  ? 'bg-brand-600 text-white shadow-sm shadow-brand-500/20'
+                  : 'bg-ui-surface hover:bg-ui-page-alt text-ui-muted hover:text-ui-text border border-ui-border/50'
+              }`}
+            >
+              {sec.icon}
+              <span>{sec.label}</span>
+            </button>
+          ))}
+        </div>
 
-        {/* Content */}
-        <div className="min-w-0">
-          {current.kind === 'fields' && (
-            <Card className="p-5">
-              <div className="mb-5 flex items-center gap-3 border-b border-ui-border pb-4 dark:border-navy-800">
-                {current.icon}
-                <h2 className="text-lg font-bold text-ui-text dark:text-white">{current.label}</h2>
+        {/* Tab Content Panel */}
+        <div className="md:col-span-3 space-y-6">
+          {/* TAB: Branch Profile & Receipts */}
+          {active === 'branch_profile' && (
+            <Card className="p-6 space-y-6">
+              <div>
+                <h2 className="text-lg font-bold text-ui-text">{isAr ? 'بيانات وطباعة إيصالات الفرع' : 'Branch Profile & Receipts'}</h2>
+                <p className="text-xs text-ui-subtle">{isAr ? 'تخصيص الإيصالات والطباعة الحرارية الخاصة بهذا الفرع' : 'Customize receipt texts and thermal layout for this branch'}</p>
               </div>
-              <div className="grid gap-4 md:grid-cols-2">
-                {(current.fields || []).map((f) => (
-                  <div key={f.key as string} className="rounded-2xl border border-ui-border p-4 dark:border-navy-700">
-                    <label className="mb-2 block text-sm font-medium text-ui-muted">{f.label}</label>
-                    {f.help && <p className="mb-2 text-xs text-ui-subtle">{f.help}</p>}
-                    <FieldControl field={f} value={form[f.key]} onChange={(v) => set(f.key, v as never)} />
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Input
+                  label={isAr ? 'شعار خاص بهذا الفرع (رابط صورة)' : 'Branch Logo Image URL'}
+                  value={branchForm.logo_url || ''}
+                  onChange={(e) => setBranchForm({ ...branchForm, logo_url: e.target.value })}
+                  placeholder="https://..."
+                />
+                <Input
+                  label={isAr ? 'نسبة الضريبة الخاصة بالفرع (%)' : 'Branch Tax Rate (%)'}
+                  type="number"
+                  step="0.1"
+                  value={branchForm.tax_rate ?? ''}
+                  onChange={(e) => setBranchForm({ ...branchForm, tax_rate: e.target.value ? Number(e.target.value) : null })}
+                  placeholder={isAr ? 'اتركه فارغاً لاستخدام الافتراضي' : 'Leave empty to inherit'}
+                />
+                <div className="sm:col-span-2">
+                  <Textarea
+                    label={isAr ? 'ترويسة إيصال الفرع (Header)' : 'Branch Receipt Header'}
+                    rows={2}
+                    value={branchForm.receipt_header || ''}
+                    onChange={(e) => setBranchForm({ ...branchForm, receipt_header: e.target.value })}
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <Textarea
+                    label={isAr ? 'تذييل إيصال الفرع (Footer)' : 'Branch Receipt Footer'}
+                    rows={2}
+                    value={branchForm.receipt_footer || ''}
+                    onChange={(e) => setBranchForm({ ...branchForm, receipt_footer: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              <div className="pt-4 border-t border-ui-border flex justify-end">
+                <Button onClick={saveBranchSpecific} disabled={saving}>
+                  {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                  <span>{isAr ? 'حفظ إعدادات الفرع' : 'Save Branch Profile'}</span>
+                </Button>
+              </div>
+            </Card>
+          )}
+
+          {/* TAB: Branch Subscription */}
+          {active === 'branch_subscription' && (
+            <div className="space-y-6">
+              {/* Current Status Card */}
+              <Card className="p-6 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <h2 className="text-lg font-bold text-ui-text">{isAr ? 'حالة اشتراك الفرع الحالي' : 'Branch Subscription Status'}</h2>
+                    <p className="text-xs text-ui-subtle">{isAr ? 'تفاصيل الباقة والمميزات المتاحة لهذا الفرع' : 'Current tier and expiration details'}</p>
                   </div>
-                ))}
-              </div>
-            </Card>
-          )}
+                  <span
+                    className={`px-3 py-1 rounded-full text-xs font-bold ${
+                      branchSubStatus?.status === 'active'
+                        ? 'bg-ui-success-soft text-ui-success'
+                        : branchSubStatus?.status === 'trialing'
+                        ? 'bg-ui-info-soft text-ui-info'
+                        : 'bg-ui-danger-soft text-ui-danger'
+                    }`}
+                  >
+                    {branchSubStatus?.status === 'active'
+                      ? isAr ? 'اشتراك نشط' : 'Active Plan'
+                      : branchSubStatus?.status === 'trialing'
+                      ? isAr ? 'فترة تجريبية' : 'Trial Mode'
+                      : isAr ? 'منتهي / مطلوب التجديد' : 'Past Due / Expired'}
+                  </span>
+                </div>
 
-          {current.kind === 'info' && (
-            <Card className="p-8 text-center">
-              <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-ui-page-alt dark:bg-navy-800">{current.icon}</div>
-              <h2 className="text-lg font-bold text-ui-text dark:text-white">{current.label}</h2>
-              <p className="mx-auto mt-2 max-w-md text-sm text-ui-subtle dark:text-ui-subtle">{current.note}</p>
-              <p className="mt-3 text-xs text-ui-subtle">{isAr ? 'لا توجد مفتاحيات بصرية في هذه الفئة — كل ما يُعرض هنا موصول بوظيفة فعلية.' : 'No visual-only switches here — everything shown is wired to a real function.'}</p>
-            </Card>
-          )}
+                <div className="grid gap-4 sm:grid-cols-3 p-4 bg-ui-page rounded-2xl border border-ui-border">
+                  <div>
+                    <p className="text-xs text-ui-subtle">{isAr ? 'اسم الباقة:' : 'Current Plan:'}</p>
+                    <p className="text-base font-bold text-ui-text">
+                      {branchSubStatus?.plan_name_ar || branchSubStatus?.plan_code || (isAr ? 'الباقة الأساسية' : 'Standard')}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-ui-subtle">{isAr ? 'تاريخ الانتهاء:' : 'Expires At:'}</p>
+                    <p className="text-base font-bold text-ui-text">
+                      {branchSubStatus?.current_period_ends_at ? formatDate(branchSubStatus.current_period_ends_at, lang) : '-'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-ui-subtle">{isAr ? 'الأيام المتبقية:' : 'Days Left:'}</p>
+                    <p className="text-base font-bold text-brand-600">
+                      {branchSubStatus?.days_remaining ?? 0} {isAr ? 'يوم' : 'days'}
+                    </p>
+                  </div>
+                </div>
+              </Card>
 
-          {current.kind === 'appearance' && (
-            <Card className="p-5">
-              <div className="mb-5 flex items-center gap-3 border-b border-ui-border pb-4 dark:border-navy-800">
-                <Palette className="w-5 h-5 text-brand-600 dark:text-brand-400" />
-                <h2 className="text-lg font-bold text-ui-text dark:text-white">{isAr ? 'المظهر / الثيم' : 'Appearance / Theme'}</h2>
-              </div>
+              {/* Plans & Upgrade via InstaPay */}
+              <Card className="p-6 space-y-4">
+                <h3 className="text-base font-bold text-ui-text">{isAr ? 'ترقية أو تجديد الباقة عبر InstaPay' : 'Renew or Upgrade Plan via InstaPay'}</h3>
 
-              <label className="text-sm font-medium text-ui-muted mb-1 block">{t('uiTheme')}</label>
-              <p className="text-xs text-ui-subtle dark:text-ui-subtle mb-3">{t('themeHint')}</p>
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
-                {UI_THEMES.map((p) => {
-                  const activeTheme = form.brand_color === p.key;
-                  const surfaceMid = `hsl(${p.surfaceHue} ${Math.min(70, p.surfaceSat)}% ${p.mode === 'dark' ? 45 : 75}%)`;
-                  const surfaceDark = `hsl(${p.surfaceHue} ${Math.min(70, p.surfaceSat)}% ${p.mode === 'dark' ? 12 : 30}%)`;
-                  return (
-                    <button
-                      key={p.key}
-                      onClick={() => pickTheme(p.key)}
-                      className={`group relative overflow-hidden rounded-2xl border-2 transition-all p-3 text-start ${
-                        activeTheme ? 'border-brand-500 ring-2 ring-brand-500/30' : 'border-ui-border dark:border-navy-700 hover:border-brand-300'
-                      }`}
-                    >
-                      <div className={`h-9 rounded-xl mb-2.5 flex items-end gap-1 p-1.5 border border-black/10 ${p.mode === 'dark' ? '' : 'bg-ui-page-alt'}`} style={{ background: surfaceDark }}>
-                        <span className="w-4 h-2.5 rounded-[4px]" style={{ background: `hsl(${p.brandHue} ${p.brandSat}% 45%)` }} />
-                        <span className="w-4 h-2.5 rounded-[4px] opacity-80" style={{ background: surfaceMid }} />
-                        <span className="w-4 h-2.5 rounded-[4px] opacity-60" style={{ background: surfaceMid }} />
+                {/* Gateway Instructions */}
+                {gatewaySettings && (
+                  <div className="p-4 rounded-2xl bg-brand-500/10 border border-brand-500/20 space-y-3">
+                    <div className="flex items-center gap-2 font-bold text-brand-600 dark:text-brand-400">
+                      <CreditCard className="w-5 h-5" />
+                      <span>{isAr ? 'بيانات التحويل عبر InstaPay' : 'InstaPay Payment Details'}</span>
+                    </div>
+                    <div className="grid gap-2 sm:grid-cols-2 text-xs">
+                      <div>
+                        <span className="text-ui-subtle">{isAr ? 'معرّف أو رقم InstaPay:' : 'InstaPay ID:'} </span>
+                        <span className="font-mono font-bold text-ui-text">{gatewaySettings.instapay_id || '-'}</span>
                       </div>
-                      <div className="text-xs font-semibold text-ui-text">{isAr ? p.ar : p.en}</div>
-                      <div className="text-[10px] text-ui-subtle">{p.mode === 'dark' ? t('darkMode') : t('lightMode')}</div>
-                      {activeTheme && <span className="absolute top-2 end-2 w-2.5 h-2.5 rounded-full bg-brand-500 shadow" />}
-                    </button>
-                  );
-                })}
-              </div>
-
-              <div className="border-t border-ui-border dark:border-navy-800 pt-5">
-                <label className="text-sm font-medium text-ui-muted mb-3 block">{t('brandColor')}</label>
-                <div className="grid grid-cols-4 sm:grid-cols-8 gap-3 mb-5">
-                  {BRAND_PRESETS.map((p) => {
-                    const activeColor = form.brand_color === p.key;
-                    return (
-                      <button
-                        key={p.key}
-                        onClick={() => pickPreset(p.key)}
-                        title={isAr ? p.ar : p.en}
-                        className={`aspect-square rounded-2xl border-2 transition-all flex items-center justify-center ${activeColor ? 'border-ui-border dark:border-white scale-105' : 'border-transparent hover:scale-105'}`}
-                        style={{ backgroundColor: `hsl(${p.hue} ${p.sat}% 42%)` }}
-                      >
-                        {activeColor && <span className="w-3 h-3 rounded-full bg-white" />}
-                      </button>
-                    );
-                  })}
-                </div>
-                <div className="flex items-end gap-3 mb-4">
-                  <div className="flex-1">
-                    <Input
-                      label={isAr ? 'لون مخصص (Hex)' : 'Custom Color (Hex)'}
-                      value={customBrand}
-                      onChange={(e) => { setCustomBrand(e.target.value); if (/^#([0-9a-fA-F]{6})$/.test(e.target.value)) applyCustomHex(e.target.value); }}
-                      placeholder="#059669"
-                    />
-                  </div>
-                  <div className="w-12 h-12 rounded-xl border border-ui-border mb-1" style={{ backgroundColor: brandHex }} />
-                </div>
-              </div>
-            </Card>
-          )}
-
-          {current.kind === 'language' && (
-            <Card className="p-5">
-              <div className="mb-5 flex items-center gap-3 border-b border-ui-border pb-4 dark:border-navy-800">
-                <Languages className="w-5 h-5 text-brand-600 dark:text-brand-400" />
-                <h2 className="text-lg font-bold text-ui-text dark:text-white">{isAr ? 'اللغة / التوطين' : 'Language / Localization'}</h2>
-              </div>
-              <div className="flex gap-2 max-w-md">
-                <button onClick={() => { setLang('ar'); void save({ language: 'ar' }); }} className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition-colors ${lang === 'ar' ? 'bg-brand-600 text-white' : 'bg-ui-page-alt text-ui-muted'}`}>{t('arabic')}</button>
-                <button onClick={() => { setLang('en'); void save({ language: 'en' }); }} className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition-colors ${lang === 'en' ? 'bg-brand-600 text-white' : 'bg-ui-page-alt text-ui-muted'}`}>{t('english')}</button>
-              </div>
-            </Card>
-          )}
-
-          {current.kind === 'branches' && (
-            <Card className="p-5">
-              <div className="mb-4 flex items-center gap-3 border-b border-ui-border pb-4 dark:border-navy-800">
-                <Building2 className="w-5 h-5 text-brand-600 dark:text-brand-400" />
-                <div>
-                  <h2 className="text-lg font-bold text-ui-text dark:text-white">{t('branchSettings')}</h2>
-                  <p className="text-xs text-ui-subtle">{t('useGlobalHint')}</p>
-                </div>
-              </div>
-
-              <Select label={t('branchesTab')} value={branchId} onChange={(e) => setBranchId(e.target.value)}>
-                <option value="">{isAr ? 'اختر الفرع' : 'Select branch'}</option>
-                {branches.map((b) => <option key={b.id} value={b.id}>{isAr ? b.name : (b.name_en || b.name)}</option>)}
-              </Select>
-
-              {selectedBranch && (
-                <div className="mt-5 space-y-4">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <Input label={t('currency')} value={branchForm.currency || ''} onChange={(e) => setBranchForm({ ...branchForm, currency: e.target.value })} placeholder={settings?.currency} />
-                    <Input label={t('taxRate') + ' %'} type="number" step="0.01" value={branchForm.tax_rate ?? ''} onChange={(e) => setBranchForm({ ...branchForm, tax_rate: e.target.value === '' ? null : parseFloat(e.target.value) || 0 })} placeholder={String(settings?.tax_rate)} />
-                    <Select label={t('taxEnabled')} value={branchForm.tax_enabled == null ? '' : (branchForm.tax_enabled ? '1' : '0')} onChange={(e) => setBranchForm({ ...branchForm, tax_enabled: e.target.value === '' ? null : e.target.value === '1' })}>
-                      <option value="">{isAr ? 'حسب الإعداد العام' : 'Follow global'}</option>
-                      <option value="1">{t('yes')}</option>
-                      <option value="0">{t('no')}</option>
-                    </Select>
-                    <Input label={t('lowStockThreshold')} type="number" step="0.5" min={0} value={branchForm.low_stock_threshold ?? ''} onChange={(e) => setBranchForm({ ...branchForm, low_stock_threshold: e.target.value === '' ? null : parseFloat(e.target.value) || 0 })} placeholder={String(settings?.low_stock_threshold)} />
-                    <Input label={t('logo') + ' URL'} value={branchForm.logo_url || ''} onChange={(e) => setBranchForm({ ...branchForm, logo_url: e.target.value })} placeholder={settings?.logo_url || undefined} />
-                  </div>
-                  <Textarea label={t('receiptHeader')} value={branchForm.receipt_header || ''} onChange={(e) => setBranchForm({ ...branchForm, receipt_header: e.target.value })} rows={2} placeholder={settings?.receipt_header || undefined} />
-                  <Textarea label={t('receiptFooter')} value={branchForm.receipt_footer || ''} onChange={(e) => setBranchForm({ ...branchForm, receipt_footer: e.target.value })} rows={2} placeholder={settings?.receipt_footer || undefined} />
-
-                  <div className="flex items-center gap-3">
-                    <Button onClick={saveBranch} disabled={saving}>
-                      <Save className="w-4 h-4" /> {t('save')}
-                    </Button>
-                    {branchSettingsMap[branchId] && (
-                      <Button variant="danger" onClick={clearBranchSettings}>
-                        <Trash2 className="w-4 h-4" /> {isAr ? 'إعادة تعيين للعام' : 'Reset to global'}
-                      </Button>
+                      <div>
+                        <span className="text-ui-subtle">{isAr ? 'اسم المستفيد:' : 'Beneficiary:'} </span>
+                        <span className="font-bold text-ui-text">{gatewaySettings.beneficiary_name || '-'}</span>
+                      </div>
+                    </div>
+                    {gatewaySettings.instructions_ar && (
+                      <p className="text-xs text-ui-muted pt-2 border-t border-brand-500/20 whitespace-pre-line">
+                        {isAr ? gatewaySettings.instructions_ar : gatewaySettings.instructions_en || gatewaySettings.instructions_ar}
+                      </p>
                     )}
                   </div>
+                )}
 
-                  <div className="border-t border-ui-border pt-5">
-                    <h4 className="font-semibold text-ui-text mb-1 flex items-center gap-2">
-                      <FlaskConical className="w-5 h-5 text-brand-600 dark:text-brand-400" /> {t('demoActions')}
+                {/* Plans Selection */}
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {publicPlans.map((p) => (
+                    <div
+                      key={p.id}
+                      onClick={() => setSelectedUpgradePlan(p)}
+                      className={`p-4 rounded-2xl border-2 cursor-pointer transition ${
+                        selectedUpgradePlan?.id === p.id
+                          ? 'border-brand-600 bg-brand-500/5'
+                          : 'border-ui-border hover:border-ui-border/80'
+                      }`}
+                    >
+                      <h4 className="font-bold text-ui-text">{isAr ? p.name_ar : p.name_en || p.name_ar}</h4>
+                      <p className="text-xl font-black text-ui-text my-2">
+                        {formatCurrency(p.monthly_price_egp, 'EGP', lang)} <span className="text-xs text-ui-subtle font-normal">/ {isAr ? 'شهر' : 'mo'}</span>
+                      </p>
+                      <p className="text-xs text-ui-subtle">
+                        {isAr ? 'أو سنوي:' : 'Yearly:'} {formatCurrency(p.yearly_price_egp, 'EGP', lang)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Submit Receipt Form */}
+                {selectedUpgradePlan && (
+                  <div className="p-4 rounded-2xl border border-ui-border bg-ui-page space-y-4 animate-fade-in">
+                    <h4 className="font-bold text-sm text-ui-text">
+                      {isAr ? `تأكيد طلب الاشتراك في باقة: ${selectedUpgradePlan.name_ar}` : `Submit Payment for: ${selectedUpgradePlan.name_en || selectedUpgradePlan.name_ar}`}
                     </h4>
-                    <p className="text-xs text-ui-subtle dark:text-ui-subtle mb-4">{t('demoDataHint')}</p>
-                    <div className="flex flex-wrap items-center gap-3">
-                      <Button variant="outline" onClick={handleSeedDemo} disabled={demoBusy}>
-                        <Plus className="w-4 h-4" /> {t('seedDemo')}
+
+                    <div className="flex gap-4 text-xs font-semibold">
+                      <label className="flex items-center gap-1.5 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="cycle"
+                          checked={upgradeCycle === 'monthly'}
+                          onChange={() => setUpgradeCycle('monthly')}
+                        />
+                        <span>{isAr ? `شهري (${selectedUpgradePlan.monthly_price_egp} ج.م)` : `Monthly (${selectedUpgradePlan.monthly_price_egp} EGP)`}</span>
+                      </label>
+                      <label className="flex items-center gap-1.5 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="cycle"
+                          checked={upgradeCycle === 'yearly'}
+                          onChange={() => setUpgradeCycle('yearly')}
+                        />
+                        <span>{isAr ? `سنوي (${selectedUpgradePlan.yearly_price_egp} ج.م)` : `Yearly (${selectedUpgradePlan.yearly_price_egp} EGP)`}</span>
+                      </label>
+                    </div>
+
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <Input
+                        label={isAr ? 'الرقم المرجعي للإشعار (Reference No.)' : 'Transaction Reference'}
+                        value={paymentRef}
+                        onChange={(e) => setPaymentRef(e.target.value)}
+                        placeholder="e.g. 123456789"
+                      />
+                      <Input
+                        label={isAr ? 'رابط صورة إيصال التحويل (Receipt URL)' : 'Receipt Image URL'}
+                        value={receiptUrl}
+                        onChange={(e) => setReceiptUrl(e.target.value)}
+                        placeholder="https://..."
+                      />
+                    </div>
+
+                    <div className="flex justify-end gap-2">
+                      <Button variant="outline" size="sm" onClick={() => setSelectedUpgradePlan(null)}>
+                        {isAr ? 'إلغاء' : 'Cancel'}
                       </Button>
-                      <Button variant="danger" onClick={() => setDemoConfirmOpen(true)} disabled={demoBusy}>
-                        <Trash2 className="w-4 h-4" /> {t('deleteDemo')}
+                      <Button size="sm" onClick={submitBranchPayment} disabled={submittingPayment}>
+                        {submittingPayment ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                        <span>{isAr ? 'إرسال إشعار الدفع' : 'Submit Proof'}</span>
                       </Button>
                     </div>
                   </div>
+                )}
+              </Card>
+            </div>
+          )}
+
+          {/* TAB: Branch Staff */}
+          {active === 'branch_staff' && (
+            <Card className="p-6 space-y-4">
+              <div>
+                <h2 className="text-lg font-bold text-ui-text">{isAr ? 'طاقم عمل الفرع' : 'Branch Staff'}</h2>
+                <p className="text-xs text-ui-subtle">{isAr ? 'الموظفون المعينون للعمل في هذا الفرع' : 'Team members assigned to this branch location'}</p>
+              </div>
+
+              {loadingStaff ? (
+                <div className="flex justify-center p-8">
+                  <Loader2 className="w-6 h-6 animate-spin text-brand-500" />
+                </div>
+              ) : branchStaff.length === 0 ? (
+                <p className="text-sm text-ui-subtle italic py-4">{isAr ? 'لا يوجد موظفون مسجلون على هذا الفرع حالياً' : 'No staff assigned'}</p>
+              ) : (
+                <div className="overflow-x-auto rounded-xl border border-ui-border">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-ui-border bg-ui-page-alt text-start">
+                        <th className="p-3 font-semibold text-ui-subtle">{isAr ? 'الاسم' : 'Name'}</th>
+                        <th className="p-3 font-semibold text-ui-subtle">{isAr ? 'البريد الإلكتروني' : 'Email'}</th>
+                        <th className="p-3 font-semibold text-ui-subtle">{isAr ? 'الدور الوظيفي' : 'Role'}</th>
+                        <th className="p-3 font-semibold text-ui-subtle">{isAr ? 'الحالة' : 'Status'}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {branchStaff.map((s) => (
+                        <tr key={s.id} className="border-b border-ui-border/50 hover:bg-ui-page-alt/50">
+                          <td className="p-3 font-bold text-ui-text">{s.full_name || '-'}</td>
+                          <td className="p-3 text-xs text-ui-subtle font-mono">{s.email}</td>
+                          <td className="p-3">
+                            <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-brand-500/10 text-brand-600">
+                              {s.role}
+                            </span>
+                          </td>
+                          <td className="p-3">
+                            <span
+                              className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                                s.is_active ? 'bg-ui-success-soft text-ui-success' : 'bg-ui-danger-soft text-ui-danger'
+                              }`}
+                            >
+                              {s.is_active ? (isAr ? 'نشط' : 'Active') : (isAr ? 'معطل' : 'Disabled')}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               )}
             </Card>
           )}
 
-          {current.kind === 'roles' && <RolesTab />}
+          {/* TAB: Appearance */}
+          {active === 'appearance' && (
+            <Card className="p-6 space-y-6">
+              <div>
+                <h2 className="text-lg font-bold text-ui-text">{isAr ? 'المظهر وسمات الواجهة' : 'Appearance & Themes'}</h2>
+                <p className="text-xs text-ui-subtle">{isAr ? 'اختر السمة واللون المفضل لواجهة الاستخدام' : 'Select your preferred visual style and theme mode'}</p>
+              </div>
 
-          {current.kind === 'system' && (
-            <Card className="p-5">
-              <div className="mb-4 flex items-center gap-3 border-b border-ui-border pb-4 dark:border-navy-800">
-                <Settings2 className="w-5 h-5 text-brand-600 dark:text-brand-400" />
-                <div>
-                  <h2 className="text-lg font-bold text-ui-text dark:text-white">{isAr ? 'النظام / الصيانة' : 'System / Maintenance'}</h2>
-                  <p className="text-xs text-ui-subtle">{isAr ? 'أدوات النظام والسجل وحالة الصحة' : 'System tools, audit log and health status'}</p>
+              {/* Mode Toggle */}
+              <div>
+                <p className="text-xs font-bold text-ui-text mb-2">{isAr ? 'وضع الإضاءة:' : 'Theme Mode:'}</p>
+                <div className="flex gap-2">
+                  <Button
+                    variant={theme === 'light' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setTheme('light')}
+                  >
+                    {isAr ? 'الوضع النهاري (Light)' : 'Light'}
+                  </Button>
+                  <Button
+                    variant={theme === 'dark' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setTheme('dark')}
+                  >
+                    {isAr ? 'الوضع الليلي (Dark)' : 'Dark'}
+                  </Button>
                 </div>
               </div>
-              <div className="grid gap-3 sm:grid-cols-3">
-                <Link to="/system-health" className="rounded-2xl border border-ui-border p-4 transition hover:border-brand-400 dark:border-navy-700">
-                  <Activity className="mb-2 h-5 w-5 text-brand-600 dark:text-brand-400" />
-                  <p className="text-sm font-bold text-ui-text">{isAr ? 'فحص صحة النظام' : 'System Health'}</p>
-                  <p className="text-xs text-ui-subtle">{isAr ? 'سلامة قاعدة البيانات وواجهات RPC' : 'Database & RPC integrity'}</p>
-                </Link>
-                <Link to="/audit-log" className="rounded-2xl border border-ui-border p-4 transition hover:border-brand-400 dark:border-navy-700">
-                  <SlidersHorizontal className="mb-2 h-5 w-5 text-brand-600 dark:text-brand-400" />
-                  <p className="text-sm font-bold text-ui-text">{isAr ? 'سجل التدقيق' : 'Audit Log'}</p>
-                  <p className="text-xs text-ui-subtle">{isAr ? 'كل التغييرات على البيانات' : 'All data changes'}</p>
-                </Link>
-                <Link to="/subscriptions/admin" className="rounded-2xl border border-ui-border p-4 transition hover:border-brand-400 dark:border-navy-700">
-                  <Check className="mb-2 h-5 w-5 text-brand-600 dark:text-brand-400" />
-                  <p className="text-sm font-bold text-ui-text">{isAr ? 'الاشتراكات' : 'Subscriptions'}</p>
-                  <p className="text-xs text-ui-subtle">{isAr ? 'إدارة اشتراكات الفروع' : 'Manage branch subscriptions'}</p>
-                </Link>
-              </div>
-              <div className="mt-5 border-t border-ui-border pt-4 dark:border-navy-800">
-                <h3 className="mb-2 flex items-center gap-2 text-sm font-bold text-ui-text dark:text-white"><Link2 className="h-4 w-4" />{isAr ? 'روابط الوحدات الحالية' : 'Existing Modules'}</h3>
-                <div className="flex flex-wrap gap-2">
-                  {[['/branches', isAr ? 'الفروع' : 'Branches'], ['/users', isAr ? 'المستخدمون' : 'Users'], ['/products', isAr ? 'المنتجات' : 'Products'], ['/categories', isAr ? 'الأقسام' : 'Categories'], ['/warehouses', isAr ? 'المستودعات' : 'Warehouses'], ['/recipes', isAr ? 'الوصفات' : 'Recipes'], ['/reports', isAr ? 'التقارير' : 'Reports'], ['/audit-log', isAr ? 'سجل التدقيق' : 'Audit Log']].map(([href, label]) => (
-                    <Link key={href} to={href} className="rounded-xl border border-ui-border px-3 py-2 text-sm font-semibold hover:border-brand-400 dark:border-navy-700">{label}</Link>
+
+              {/* Curated Themes */}
+              <div>
+                <p className="text-xs font-bold text-ui-text mb-2">{isAr ? 'سمات الواجهة المصممة بعناية:' : 'Curated Themes:'}</p>
+                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                  {UI_THEMES.map((th) => (
+                    <button
+                      key={th.key}
+                      onClick={() => pickTheme(th.key)}
+                      className="p-3 rounded-xl border border-ui-border bg-ui-page hover:border-brand-500/50 flex items-center justify-between text-start transition"
+                    >
+                      <span className="text-xs font-bold text-ui-text">{isAr ? th.nameAr : th.nameEn}</span>
+                      <span className="text-[10px] text-ui-subtle px-1.5 py-0.5 rounded bg-ui-surface">
+                        {th.mode}
+                      </span>
+                    </button>
                   ))}
                 </div>
               </div>
             </Card>
           )}
+
+          {/* TAB: Language */}
+          {active === 'language' && (
+            <Card className="p-6 space-y-4">
+              <div>
+                <h2 className="text-lg font-bold text-ui-text">{isAr ? 'لغة واجهة الاستخدام' : 'Language & Localization'}</h2>
+                <p className="text-xs text-ui-subtle">{isAr ? 'اختر اللغة المفضلة للنظام' : 'Select interface language'}</p>
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <Button
+                  variant={lang === 'ar' ? 'default' : 'outline'}
+                  onClick={() => setLang('ar')}
+                  className="w-32"
+                >
+                  العربية
+                </Button>
+                <Button
+                  variant={lang === 'en' ? 'default' : 'outline'}
+                  onClick={() => setLang('en')}
+                  className="w-32"
+                >
+                  English
+                </Button>
+              </div>
+            </Card>
+          )}
         </div>
       </div>
-
-      <ConfirmDialog
-        open={demoConfirmOpen}
-        onClose={() => setDemoConfirmOpen(false)}
-        onConfirm={handleDeleteDemo}
-        title={t('deleteDemo')}
-        message={t('deleteDemoConfirm')}
-        confirmLabel={t('delete')}
-        cancelLabel={t('cancel')}
-      />
-    </div>
-  );
-}
-
-function FieldControl({ field, value, onChange }: { field: FieldDef; value: unknown; onChange: (v: unknown) => void }) {
-  if (field.type === 'toggle') {
-    return <ToggleRow label={field.label} checked={Boolean(value)} onChange={(v) => onChange(v)} />;
-  }
-  if (field.type === 'select') {
-    return (
-      <Select value={String(value ?? '')} onChange={(e) => onChange(e.target.value)}>
-        {(field.options || []).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-      </Select>
-    );
-  }
-  if (field.type === 'textarea') {
-    return <Textarea value={String(value ?? '')} onChange={(e) => onChange(e.target.value)} rows={2} />;
-  }
-  if (field.type === 'number') {
-    return (
-      <Input
-        type="number"
-        step={field.step}
-        min={field.min}
-        max={field.max}
-        value={value == null ? '' : String(value)}
-        onChange={(e) => onChange(field.key.includes('places') || field.key === 'receipt_copies' || field.key === 'invoice_next_number' ? parseInt(e.target.value) || 0 : parseFloat(e.target.value) || 0)}
-      />
-    );
-  }
-  return <Input value={String(value ?? '')} onChange={(e) => onChange(e.target.value)} />;
-}
-
-function ToggleRow({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
-  const knobPos = checked ? 'start-0.5' : 'end-0.5';
-  return (
-    <div className="flex items-center justify-between gap-4 bg-ui-page-alt rounded-xl px-4 py-3 border border-ui-border">
-      <span className="text-sm font-medium text-ui-muted">{label}</span>
-      <button
-        type="button"
-        onClick={() => onChange(!checked)}
-        className={`relative w-11 h-6 rounded-full transition-colors ${checked ? 'bg-brand-600' : 'bg-ui-page-alt'}`}
-      >
-        <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-ui-surface shadow transition-all ${knobPos}`} />
-      </button>
     </div>
   );
 }

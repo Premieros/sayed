@@ -62,6 +62,7 @@ const ICONS: Record<MenuIcon, ReactNode> = {
   subscriptionsAdmin: <CreditCard className="h-5 w-5" />,
   auditLog: <ScrollText className="h-5 w-5" />,
   settings: <Settings className="h-5 w-5" />,
+  superAdmin: <SlidersHorizontal className="h-5 w-5 text-brand-500" />,
 };
 
 const TOP_TABS = [

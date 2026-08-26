@@ -312,6 +312,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     'accounts.view', 'accounts.manage',
     'shifts.view', 'shifts.open', 'shifts.close', 'shifts.manage',
     'users.view', 'users.manage',
+    'settings.manage',
   ],
   cashier: [
     'dashboard.view', 'pos.sell', 'pos.reprint', 'floor_plan.view',
