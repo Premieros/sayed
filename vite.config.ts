@@ -2,8 +2,9 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { fileURLToPath } from 'node:url';
 
-// https://vitejs.dev/config/
+// Premier is deployed as a GitHub Pages project site at /sayed/.
 export default defineConfig({
+  base: '/sayed/',
   plugins: [react()],
   server: {
     host: '0.0.0.0',
@@ -22,8 +23,8 @@ export default defineConfig({
       output: {
         manualChunks: {
           'react-vendor': ['react', 'react-dom', 'react-router-dom'],
-          'charts': ['recharts'],
-          'supabase': ['@supabase/supabase-js'],
+          charts: ['recharts'],
+          supabase: ['@supabase/supabase-js'],
         },
       },
     },
