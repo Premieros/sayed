@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   Palette,
   Languages,
@@ -124,6 +124,17 @@ export function SettingsControlCenterPage() {
       setBranchStaff(data as UserRow[]);
     }
   }, [targetBranchId]);
+
+  const currentPlan = useMemo(
+    () => publicPlans.find((p) => p.id === branchSubStatus?.plan_id),
+    [publicPlans, branchSubStatus?.plan_id]
+  );
+
+  const daysRemaining = useMemo(() => {
+    if (!branchSubStatus?.current_period_ends_at) return 0;
+    const diff = new Date(branchSubStatus.current_period_ends_at).getTime() - Date.now();
+    return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+  }, [branchSubStatus?.current_period_ends_at]);
 
   useEffect(() => {
     if (active === 'branch_subscription') void loadBranchSubData();
@@ -251,8 +262,13 @@ export function SettingsControlCenterPage() {
               <Select
                 value={selectedBranchId}
                 onChange={(e) => setSelectedBranchId(e.target.value)}
-                options={branches.map((b) => ({ value: b.id, label: isAr ? b.name : b.name_en || b.name }))}
-              />
+              >
+                {branches.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {isAr ? b.name : b.name_en || b.name}
+                  </option>
+                ))}
+              </Select>
             </div>
           </div>
         )}
@@ -344,14 +360,14 @@ export function SettingsControlCenterPage() {
                     className={`px-3 py-1 rounded-full text-xs font-bold ${
                       branchSubStatus?.status === 'active'
                         ? 'bg-ui-success-soft text-ui-success'
-                        : branchSubStatus?.status === 'trialing'
+                        : branchSubStatus?.status === 'trial'
                         ? 'bg-ui-info-soft text-ui-info'
                         : 'bg-ui-danger-soft text-ui-danger'
                     }`}
                   >
                     {branchSubStatus?.status === 'active'
                       ? isAr ? 'اشتراك نشط' : 'Active Plan'
-                      : branchSubStatus?.status === 'trialing'
+                      : branchSubStatus?.status === 'trial'
                       ? isAr ? 'فترة تجريبية' : 'Trial Mode'
                       : isAr ? 'منتهي / مطلوب التجديد' : 'Past Due / Expired'}
                   </span>
@@ -361,7 +377,9 @@ export function SettingsControlCenterPage() {
                   <div>
                     <p className="text-xs text-ui-subtle">{isAr ? 'اسم الباقة:' : 'Current Plan:'}</p>
                     <p className="text-base font-bold text-ui-text">
-                      {branchSubStatus?.plan_name_ar || branchSubStatus?.plan_code || (isAr ? 'الباقة الأساسية' : 'Standard')}
+                      {currentPlan
+                        ? isAr ? currentPlan.name_ar : currentPlan.name_en || currentPlan.name_ar
+                        : isAr ? 'الباقة الأساسية' : 'Standard'}
                     </p>
                   </div>
                   <div>
@@ -373,7 +391,7 @@ export function SettingsControlCenterPage() {
                   <div>
                     <p className="text-xs text-ui-subtle">{isAr ? 'الأيام المتبقية:' : 'Days Left:'}</p>
                     <p className="text-base font-bold text-brand-600">
-                      {branchSubStatus?.days_remaining ?? 0} {isAr ? 'يوم' : 'days'}
+                      {daysRemaining} {isAr ? 'يوم' : 'days'}
                     </p>
                   </div>
                 </div>
@@ -555,14 +573,14 @@ export function SettingsControlCenterPage() {
                 <p className="text-xs font-bold text-ui-text mb-2">{isAr ? 'وضع الإضاءة:' : 'Theme Mode:'}</p>
                 <div className="flex gap-2">
                   <Button
-                    variant={theme === 'light' ? 'default' : 'outline'}
+                    variant={theme === 'light' ? 'primary' : 'outline'}
                     size="sm"
                     onClick={() => setTheme('light')}
                   >
                     {isAr ? 'الوضع النهاري (Light)' : 'Light'}
                   </Button>
                   <Button
-                    variant={theme === 'dark' ? 'default' : 'outline'}
+                    variant={theme === 'dark' ? 'primary' : 'outline'}
                     size="sm"
                     onClick={() => setTheme('dark')}
                   >
@@ -581,7 +599,7 @@ export function SettingsControlCenterPage() {
                       onClick={() => pickTheme(th.key)}
                       className="p-3 rounded-xl border border-ui-border bg-ui-page hover:border-brand-500/50 flex items-center justify-between text-start transition"
                     >
-                      <span className="text-xs font-bold text-ui-text">{isAr ? th.nameAr : th.nameEn}</span>
+                      <span className="text-xs font-bold text-ui-text">{isAr ? th.ar : th.en}</span>
                       <span className="text-[10px] text-ui-subtle px-1.5 py-0.5 rounded bg-ui-surface">
                         {th.mode}
                       </span>
@@ -602,14 +620,14 @@ export function SettingsControlCenterPage() {
 
               <div className="flex gap-3 pt-2">
                 <Button
-                  variant={lang === 'ar' ? 'default' : 'outline'}
+                  variant={lang === 'ar' ? 'primary' : 'outline'}
                   onClick={() => setLang('ar')}
                   className="w-32"
                 >
                   العربية
                 </Button>
                 <Button
-                  variant={lang === 'en' ? 'default' : 'outline'}
+                  variant={lang === 'en' ? 'primary' : 'outline'}
                   onClick={() => setLang('en')}
                   className="w-32"
                 >
