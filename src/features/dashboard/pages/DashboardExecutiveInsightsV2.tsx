@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { AlertTriangle, ArrowUpRight, Boxes, Building2, CreditCard, Package, RefreshCw, ShoppingCart, Sparkles, Wallet } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { supabase } from '@/api';
@@ -93,7 +93,7 @@ export function DashboardExecutiveInsightsV2() {
 
   return (
     <section dir={ar ? 'rtl' : 'ltr'} className="space-y-6" data-testid="dashboard-executive-insights">
-      <Card className="bg-gradient-to-r from-ui-surface to-ui-primary-soft/30">
+      <Card className="bg-ui-surface border-ui-border">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div><div className="flex items-center gap-2"><Sparkles className="h-5 w-5 text-ui-primary" /><h2 className="text-xl font-black text-ui-text">{ar ? 'مركز الإدارة التنفيذي' : 'Executive Management Center'}</h2></div><p className="mt-1 text-sm text-ui-muted">{ar ? 'أداء المبيعات والمخزون والتنبيهات التشغيلية في مكان واحد' : 'Sales, inventory and operational insights in one place'}</p></div>
           <div className="flex gap-2">{(['today', 'week', 'month'] as Range[]).map((item) => <button key={item} type="button" onClick={() => setRange(item)} className={`rounded-xl px-4 py-2 text-sm font-bold ${range === item ? 'bg-ui-primary text-white' : 'bg-ui-page text-ui-muted'}`}>{rangeLabels[item][ar ? 0 : 1]}</button>)}<button type="button" onClick={() => void load()} className="rounded-xl border border-ui-border p-2 text-ui-text" title={ar ? 'تحديث' : 'Refresh'}><RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} /></button></div>

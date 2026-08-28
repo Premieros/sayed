@@ -52,7 +52,7 @@ export function Card({ children, className = '', ...rest }: CardProps) {
   return (
     <div
       className={clsx(
-        'liquid-glass-card rounded-ui-xl transition-all duration-200',
+        'rounded-xl border border-ui-border bg-ui-surface shadow-ui-sm transition-all duration-150',
         className
       )}
       {...rest}

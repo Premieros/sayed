@@ -1,4 +1,4 @@
-﻿import { useState } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Loader2, ArrowRight } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
@@ -51,23 +51,23 @@ export function LoginPage() {
   return (
     <DesignSurface testId="login-surface">
       <div className="min-h-screen flex">
-        <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-navy-900 via-navy-800 to-navy-950 relative overflow-hidden">
-          <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-gold-500 via-gold-300 to-gold-500" />
-          <div className="absolute inset-0 opacity-20">
-            <div className="absolute -top-20 -right-20 w-96 h-96 bg-gold-500/20 rounded-full blur-3xl" />
-            <div className="absolute -bottom-32 -left-32 w-96 h-96 bg-brand-500/20 rounded-full blur-3xl" />
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-white/5 rounded-full blur-2xl" />
-          </div>
+        <div className="hidden lg:flex lg:w-1/2 bg-slate-900 text-white relative overflow-hidden">
+          <div className="absolute inset-x-0 top-0 h-1 bg-brand-500" />
           <div className="relative z-10 flex flex-col items-center justify-center w-full p-12">
             <div className="mb-6"><Logo variant="vertical" size={72} tone="white" tagline={isAr ? 'منصة إدارة الأعمال' : 'Business Management Platform'} /></div>
             <h1 className="text-3xl font-bold text-white text-center mb-3">{t('appName')}</h1>
-            <p className="text-ui-muted/80 text-center text-lg max-w-sm">{isAr ? 'منصة إدارة الأعمال المتكاملة لإدارة متجرك وفروعه بكفاءة' : 'The complete business management platform for your store and branches'}</p>
+            <p className="text-slate-300 text-center text-lg max-w-sm">{isAr ? 'منصة إدارة الأعمال المتكاملة لإدارة متجرك وفروعه بكفاءة' : 'The complete business management platform for your store and branches'}</p>
             <div className="grid grid-cols-3 gap-4 mt-10 w-full max-w-md">
               {[
                 { label: isAr ? 'فواتير يومية' : 'Daily Invoices', value: '100+' },
                 { label: isAr ? 'منتجات' : 'Products', value: '500+' },
                 { label: isAr ? 'تقارير' : 'Reports', value: '15+' },
-              ].map((stat) => <div key={stat.label} className="text-center bg-white/[0.06] backdrop-blur-sm rounded-xl px-4 py-3 border border-gold-500/20"><p className="text-2xl font-bold text-white">{stat.value}</p><p className="text-xs text-ui-muted/70 mt-0.5">{stat.label}</p></div>)}
+              ].map((stat) => (
+                <div key={stat.label} className="text-center bg-slate-800/90 rounded-xl px-4 py-3 border border-slate-700">
+                  <p className="text-2xl font-bold text-white">{stat.value}</p>
+                  <p className="text-xs text-slate-400 mt-0.5">{stat.label}</p>
+                </div>
+              ))}
             </div>
           </div>
         </div>
