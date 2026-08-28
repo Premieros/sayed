@@ -2,7 +2,8 @@ import { type ReactNode, useEffect, useRef } from 'react';
 import { X } from 'lucide-react';
 
 interface ModalProps {
-  open: boolean;
+  open?: boolean;
+  isOpen?: boolean;
   onClose: () => void;
   title: string;
   children: ReactNode;
@@ -17,19 +18,20 @@ const sizes = {
   '2xl': 'max-w-6xl',
 };
 
-export function Modal({ open, onClose, title, children, size = 'md' }: ModalProps) {
+export function Modal({ open, isOpen, onClose, title, children, size = 'md' }: ModalProps) {
+  const isModalOpen = open ?? isOpen ?? false;
   const modalRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (open) {
+    if (isModalOpen) {
       document.body.style.overflow = 'hidden';
       const handleEsc = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
       document.addEventListener('keydown', handleEsc);
       return () => { document.body.style.overflow = ''; document.removeEventListener('keydown', handleEsc); };
     }
-  }, [open, onClose]);
+  }, [isModalOpen, onClose]);
 
-  if (!open) return null;
+  if (!isModalOpen) return null;
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 animate-fade-in">

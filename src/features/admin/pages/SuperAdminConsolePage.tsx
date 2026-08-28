@@ -30,7 +30,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { supabase, admin, subscriptions as subApi } from '@/api';
-import type { SubscriptionPlan, SubscriptionStatus } from '@/lib/types';
+import type { SubscriptionPlan, SubscriptionStatus, BranchSettings } from '@/lib/types';
 import { useLanguage } from '@/context/LanguageContext';
 import { useToast } from '@/components/Toast';
 import { useSettings } from '@/context/SettingsContext';
@@ -217,12 +217,12 @@ export function SuperAdminConsolePage() {
   const [savingBranchOverride, setSavingBranchOverride] = useState(false);
 
   // Enterprise Store Settings state
-  const [generalForm, setGeneralForm] = useState<Record<string, unknown>>({});
+  const [generalForm, setGeneralForm] = useState<Record<string, string | number | null | undefined>>({});
   const [savingGeneral, setSavingGeneral] = useState(false);
 
   // Branch Specific Customizations state
   const [targetBranchId, setTargetBranchId] = useState<string>(branches[0]?.id || '');
-  const [branchForm, setBranchForm] = useState<Record<string, unknown>>({});
+  const [branchForm, setBranchForm] = useState<Record<string, string | number | null | undefined>>({});
   const [savingBranchCustom, setSavingBranchCustom] = useState(false);
   const [demoBusy, setDemoBusy] = useState(false);
   const [demoConfirmOpen, setDemoConfirmOpen] = useState(false);
@@ -391,13 +391,13 @@ export function SuperAdminConsolePage() {
         tax_enabled: settings.tax_enabled ? '1' : '0',
         receipt_width_mm: settings.receipt_width_mm || 80,
         receipt_copies: settings.receipt_copies || 1,
-        receipt_show_tax: settings.receipt_show_tax ?? true,
-        receipt_show_qr: settings.receipt_show_qr ?? true,
-        receipt_auto_print: settings.receipt_auto_print ?? false,
+        receipt_show_tax: settings.receipt_show_tax ? 1 : 0,
+        receipt_show_qr: settings.receipt_show_qr ? 1 : 0,
+        receipt_auto_print: settings.receipt_auto_print ? 1 : 0,
         receipt_header: settings.receipt_header || '',
         receipt_footer: settings.receipt_footer || '',
         pos_default_payment_method: settings.pos_default_payment_method || 'cash',
-        pos_barcode_autofocus: settings.pos_barcode_autofocus ?? true,
+        pos_barcode_autofocus: settings.pos_barcode_autofocus ? 1 : 0,
         low_stock_threshold: settings.low_stock_threshold ?? 5,
       });
     }
@@ -411,7 +411,7 @@ export function SuperAdminConsolePage() {
         receipt_footer: row?.receipt_footer ?? '',
         logo_url: row?.logo_url ?? '',
         tax_rate: row?.tax_rate ?? null,
-        tax_enabled: row?.tax_enabled ?? null,
+        tax_enabled: row?.tax_enabled != null ? (row.tax_enabled ? '1' : '0') : null,
         currency: row?.currency ?? '',
         low_stock_threshold: row?.low_stock_threshold ?? null,
       });
@@ -449,7 +449,7 @@ export function SuperAdminConsolePage() {
     const patch = {
       ...generalForm,
       tax_rate: Number(generalForm.tax_rate) || 0,
-      tax_enabled: generalForm.tax_enabled === '1' || generalForm.tax_enabled === true,
+      tax_enabled: String(generalForm.tax_enabled) === '1' || String(generalForm.tax_enabled) === 'true',
       low_stock_threshold: Number(generalForm.low_stock_threshold) || 0,
       receipt_copies: Math.min(5, Math.max(1, Number(generalForm.receipt_copies) || 1)),
       receipt_width_mm: Number(generalForm.receipt_width_mm) || 80,
@@ -472,7 +472,7 @@ export function SuperAdminConsolePage() {
       receipt_footer: typeof branchForm.receipt_footer === 'string' ? branchForm.receipt_footer : null,
       logo_url: typeof branchForm.logo_url === 'string' ? branchForm.logo_url : null,
       tax_rate: branchForm.tax_rate != null && !Number.isNaN(Number(branchForm.tax_rate)) ? Number(branchForm.tax_rate) : null,
-      tax_enabled: branchForm.tax_enabled != null ? branchForm.tax_enabled === '1' || branchForm.tax_enabled === true : null,
+      tax_enabled: branchForm.tax_enabled != null ? String(branchForm.tax_enabled) === '1' || String(branchForm.tax_enabled) === 'true' : null,
       currency: typeof branchForm.currency === 'string' ? branchForm.currency : null,
       low_stock_threshold: branchForm.low_stock_threshold != null && !Number.isNaN(Number(branchForm.low_stock_threshold)) ? Number(branchForm.low_stock_threshold) : null,
     };

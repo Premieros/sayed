@@ -21,12 +21,18 @@ export function Input({ label, error, className = '', id, ...props }: InputProps
   );
 }
 
-interface SelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
-  label?: string;
-  children: ReactNode;
+interface SelectOption {
+  value: string | number;
+  label: string;
 }
 
-export function Select({ label, className = '', id, children, ...props }: SelectProps) {
+interface SelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
+  label?: string;
+  options?: SelectOption[];
+  children?: ReactNode;
+}
+
+export function Select({ label, className = '', id, children, options, ...props }: SelectProps) {
   const generatedId = useId();
   const selectId = id ?? generatedId;
   return (
@@ -37,7 +43,13 @@ export function Select({ label, className = '', id, children, ...props }: Select
         className={`rounded-ui border border-ui-border bg-ui-surface-raised px-3.5 py-2.5 text-sm text-ui-text focus:outline-none focus-visible:ring-2 focus-visible:ring-ui-ring focus-visible:border-ui-border-strong transition-all ${className}`}
         {...props}
       >
-        {children}
+        {options
+          ? options.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))
+          : children}
       </select>
     </div>
   );

@@ -3,7 +3,8 @@ import { Button } from './Button';
 import { AlertTriangle } from 'lucide-react';
 
 interface ConfirmDialogProps {
-  open: boolean;
+  open?: boolean;
+  isOpen?: boolean;
   onClose: () => void;
   onConfirm: () => void;
   title: string;
@@ -12,9 +13,10 @@ interface ConfirmDialogProps {
   cancelLabel?: string;
 }
 
-export function ConfirmDialog({ open, onClose, onConfirm, title, message, confirmLabel = 'Confirm', cancelLabel = 'Cancel' }: ConfirmDialogProps) {
+export function ConfirmDialog({ open, isOpen, onClose, onConfirm, title, message, confirmLabel = 'Confirm', cancelLabel = 'Cancel' }: ConfirmDialogProps) {
+  const isDialogOpen = open ?? isOpen ?? false;
   return (
-    <Modal open={open} onClose={onClose} title={title} size="sm">
+    <Modal open={isDialogOpen} onClose={onClose} title={title} size="sm">
       <div className="flex flex-col gap-5">
         <div className="flex items-start gap-3">
           <div className="flex-shrink-0 w-10 h-10 rounded-xl bg-ui-warning-soft flex items-center justify-center">

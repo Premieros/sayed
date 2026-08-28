@@ -167,7 +167,7 @@ export function RecipesPage() {
     const yieldQty = Math.max(1, Number(form.yield_quantity || 1));
     const costPerUnit = rawCost / yieldQty;
     const selectedProd = products.find((p) => p.id === form.product_id);
-    const sellPrice = Number(selectedProd?.price || 0);
+    const sellPrice = Number(selectedProd?.sale_price || 0);
     const foodCostRatio = sellPrice > 0 ? (costPerUnit / sellPrice) * 100 : 0;
     const margin = sellPrice > 0 ? ((sellPrice - costPerUnit) / sellPrice) * 100 : 0;
     return { rawCost, costPerUnit, sellPrice, foodCostRatio, margin };
