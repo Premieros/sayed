@@ -4,6 +4,7 @@ import { LanguageProvider } from '../context/LanguageContext';
 import { ThemeProvider } from '../context/ThemeContext';
 import { SettingsProvider } from '../context/SettingsContext';
 import { RolesProvider } from '../context/RolesContext';
+import { OfflineProvider } from '../context/OfflineContext';
 import { ToastProvider } from '../components/Toast';
 import type { ReactNode } from 'react';
 
@@ -14,9 +15,11 @@ export function AppProviders({ children }: { children: ReactNode }) {
         <AuthProvider>
           <SettingsProvider>
             <RolesProvider>
-              <ToastProvider>
-                <HashRouter>{children}</HashRouter>
-              </ToastProvider>
+              <OfflineProvider>
+                <ToastProvider>
+                  <HashRouter>{children}</HashRouter>
+                </ToastProvider>
+              </OfflineProvider>
             </RolesProvider>
           </SettingsProvider>
         </AuthProvider>

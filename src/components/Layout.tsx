@@ -20,6 +20,7 @@ import { APP_ROUTES } from '@/core/navigation/routes';
 import { MENU_GROUPS, MENU_ITEMS, type MenuIcon, type MenuGroup } from '@/core/navigation/menu.config';
 import { CommandPalette, CommandPaletteTrigger } from './CommandPalette';
 import { SubscriptionBanner } from './subscription/SubscriptionBanner';
+import { OfflineStatusIndicator } from './OfflineStatusIndicator';
 
 const ICONS: Record<MenuIcon, ReactNode> = {
   dashboard: <LayoutDashboard className="h-5 w-5" />,
@@ -195,6 +196,11 @@ export function Layout({ children }: { children: ReactNode }) {
                 ))}
               </div>
             )}
+          </div>
+
+          {/* Offline Sync Status Indicator */}
+          <div className="hidden sm:flex">
+            <OfflineStatusIndicator />
           </div>
 
           {/* Active orders */}
