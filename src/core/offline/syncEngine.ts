@@ -128,7 +128,9 @@ class OfflineSyncEngine {
         await updateOfflineSaleStatus(item.id, 'syncing');
 
         // Call the server RPC
-        const { data, error } = await posApi.processSale(item.payload as Record<string, unknown>);
+        const { data, error } = await posApi.processSale(
+          item.payload as unknown as Parameters<typeof posApi.processSale>[0]
+        );
 
         if (error) {
           throw new Error(error.message || 'Network sync error');

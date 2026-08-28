@@ -166,7 +166,10 @@ export function OfflineSyncCenterModal({ open, onClose }: OfflineSyncCenterModal
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-ui-border">
-                  {queue.map((item) => (
+                  {queue.map((item) => {
+                    const total = typeof item.payload?.p_total === 'number' ? item.payload.p_total : Number(item.payload?.p_total) || 0;
+                    const paymentMethod = typeof item.payload?.p_payment_method === 'string' ? item.payload.p_payment_method : 'cash';
+                    return (
                     <tr key={item.id} className="hover:bg-ui-page-alt transition">
                       <td className="py-2.5 px-3 font-mono font-bold text-ui-text">
                         {item.invoice_number}
@@ -175,10 +178,10 @@ export function OfflineSyncCenterModal({ open, onClose }: OfflineSyncCenterModal
                         {new Date(item.created_at).toLocaleTimeString(isAr ? 'ar-EG' : 'en-US')}
                       </td>
                       <td className="py-2.5 px-3 font-bold text-brand-600">
-                        {formatCurrency(item.payload?.p_total || 0, 'EGP')}
+                        {formatCurrency(total, 'EGP')}
                       </td>
                       <td className="py-2.5 px-3 text-ui-text capitalize">
-                        {item.payload?.p_payment_method || 'cash'}
+                        {paymentMethod}
                       </td>
                       <td className="py-2.5 px-3">
                         <span
@@ -218,7 +221,8 @@ export function OfflineSyncCenterModal({ open, onClose }: OfflineSyncCenterModal
                         </Button>
                       </td>
                     </tr>
-                  ))}
+                  );
+                })}
                 </tbody>
               </table>
             </div>

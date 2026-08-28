@@ -467,14 +467,14 @@ export function SuperAdminConsolePage() {
   const handleSaveBranchCustom = async () => {
     if (!targetBranchId) return;
     setSavingBranchCustom(true);
-    const patch = {
-      receipt_header: branchForm.receipt_header || null,
-      receipt_footer: branchForm.receipt_footer || null,
-      logo_url: branchForm.logo_url || null,
-      tax_rate: branchForm.tax_rate != null && !Number.isNaN(branchForm.tax_rate) ? Number(branchForm.tax_rate) : null,
+    const patch: Partial<BranchSettings> = {
+      receipt_header: typeof branchForm.receipt_header === 'string' ? branchForm.receipt_header : null,
+      receipt_footer: typeof branchForm.receipt_footer === 'string' ? branchForm.receipt_footer : null,
+      logo_url: typeof branchForm.logo_url === 'string' ? branchForm.logo_url : null,
+      tax_rate: branchForm.tax_rate != null && !Number.isNaN(Number(branchForm.tax_rate)) ? Number(branchForm.tax_rate) : null,
       tax_enabled: branchForm.tax_enabled != null ? branchForm.tax_enabled === '1' || branchForm.tax_enabled === true : null,
-      currency: branchForm.currency || null,
-      low_stock_threshold: branchForm.low_stock_threshold != null && !Number.isNaN(branchForm.low_stock_threshold) ? Number(branchForm.low_stock_threshold) : null,
+      currency: typeof branchForm.currency === 'string' ? branchForm.currency : null,
+      low_stock_threshold: branchForm.low_stock_threshold != null && !Number.isNaN(Number(branchForm.low_stock_threshold)) ? Number(branchForm.low_stock_threshold) : null,
     };
     const ok = await saveBranchSettings(targetBranchId, patch);
     setSavingBranchCustom(false);
@@ -1194,12 +1194,12 @@ export function SuperAdminConsolePage() {
                             className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
                               st?.status === 'active'
                                 ? 'bg-ui-success-soft text-ui-success'
-                                : st?.status === 'trialing'
+                                : st?.status === 'trialing' || st?.status === 'trial'
                                 ? 'bg-ui-info-soft text-ui-info'
                                 : 'bg-ui-danger-soft text-ui-danger'
                             }`}
                           >
-                            {st?.status === 'active' ? (ar ? 'نشط' : 'Active') : st?.status === 'trialing' ? (ar ? 'تجريبي' : 'Trial') : (ar ? 'منتهي' : 'Expired')}
+                            {st?.status === 'active' ? (ar ? 'نشط' : 'Active') : (st?.status === 'trialing' || st?.status === 'trial') ? (ar ? 'تجريبي' : 'Trial') : (ar ? 'منتهي' : 'Expired')}
                           </span>
                         </div>
                         <p className="text-xs text-ui-subtle mt-1">
