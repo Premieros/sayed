@@ -3,6 +3,7 @@ import type {
   Plan,
   PlanPrice,
   Feature,
+  Subscription,
   TenantSubscriptionDetails,
   SubscriptionEvent,
   BranchFeatureOverride,
@@ -47,14 +48,16 @@ export class SubscriptionService {
       }
 
       // 2. Fetch subscription (check subscriptions table first, then branch_subscriptions)
-      let sub: Subscription | (Record<string, unknown> & { plan_id?: string; status?: string; current_period_end?: string | null; trial_ends_at?: string | null }) | null = null;
+      let sub: Subscription | null = null;
       const { data: subData } = await supabase
         .from('subscriptions')
         .select('*')
         .eq('tenant_id', orgId)
         .maybeSingle();
 
-      sub = subData;
+      if (subData) {
+        sub = subData as unknown as Subscription;
+      }
 
       if (!sub) {
         // Check branch_subscriptions
@@ -77,9 +80,16 @@ export class SubscriptionService {
               id: branchSub.id || branchData.id,
               tenant_id: orgId,
               plan_id: branchSub.plan_id,
-              status: branchSub.status || 'active',
-              current_period_end: branchSub.current_period_ends_at,
+              plan_price_id: null,
+              status: (branchSub.status as Subscription['status']) || 'active',
+              started_at: branchSub.created_at || new Date().toISOString(),
+              trial_started_at: branchSub.created_at || null,
               trial_ends_at: branchSub.status === 'trialing' ? branchSub.current_period_ends_at : null,
+              current_period_start: branchSub.created_at || null,
+              current_period_end: branchSub.current_period_ends_at,
+              cancelled_at: null,
+              suspended_at: null,
+              auto_renew: true,
               created_at: branchSub.created_at || new Date().toISOString(),
               updated_at: branchSub.updated_at || new Date().toISOString(),
             };
@@ -199,7 +209,14 @@ export class SubscriptionService {
         has_subscription: true,
         tenant_id: orgId,
         subscription: sub,
-        plan: plan || undefined,
+        plan: plan
+          ? {
+              id: plan.id,
+              name: plan.name,
+              slug: plan.slug,
+              description: plan.description ?? null,
+            }
+          : undefined,
         price: price || undefined,
         features: featuresWithDetails,
         branch_overrides: formattedOverrides,

@@ -1,5 +1,6 @@
 import { supabase } from '@/api';
 import { formatCurrency, formatDateTime, escapeHtml } from '@/lib/format';
+import type { Language } from '@/lib/types';
 
 export interface ShiftClosingSummary {
   shiftId: string;
@@ -267,7 +268,7 @@ export async function fetchShiftClosingDetails(shiftId: string, branchId?: strin
 /**
  * Generates an 80mm / 58mm Thermal Z-Report Receipt HTML
  */
-export function buildThermalZReportHtml(summary: ShiftClosingSummary, currency = 'EGP', lang = 'ar'): string {
+export function buildThermalZReportHtml(summary: ShiftClosingSummary, currency = 'EGP', lang: Language = 'ar'): string {
   const isAr = lang === 'ar';
   const dir = isAr ? 'rtl' : 'ltr';
 
@@ -454,7 +455,7 @@ export function buildThermalZReportHtml(summary: ShiftClosingSummary, currency =
 /**
  * Generates an A4 Full Report HTML for Accounting & Management
  */
-export function buildA4ZReportHtml(summary: ShiftClosingSummary, currency = 'EGP', lang = 'ar'): string {
+export function buildA4ZReportHtml(summary: ShiftClosingSummary, currency = 'EGP', lang: Language = 'ar'): string {
   const isAr = lang === 'ar';
   const dir = isAr ? 'rtl' : 'ltr';
   const diffColor = Math.abs(summary.difference) > 0.01 ? '#dc2626' : '#16a34a';

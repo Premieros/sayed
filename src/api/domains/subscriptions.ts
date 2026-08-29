@@ -45,7 +45,7 @@ export const subscriptions = {
   }): ApiResult<RpcResult & { organization_id?: string; branch_id?: string; warehouse_id?: string; user_id?: string; membership_role?: string; trial_days?: number }> {
     try {
       const res = await rpc<RpcResult & { organization_id?: string; branch_id?: string; warehouse_id?: string; user_id?: string; membership_role?: string; trial_days?: number }>('register_tenant', p);
-      if (!res.error && res.data && (res.data.success || (res.data as Record<string, unknown>).organization_id)) {
+      if (!res.error && res.data && (res.data.success || (res.data as unknown as Record<string, unknown>).organization_id)) {
         return res;
       }
       // If error indicates function missing or cache mismatch, proceed to resilient client-side provisioning
