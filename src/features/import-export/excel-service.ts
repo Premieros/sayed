@@ -67,6 +67,29 @@ export class ExcelService {
   }
 
   /**
+   * Helper to normalize Arabic and English header strings for resilient matching
+   */
+  private static normalizeHeader(str: string): string {
+    if (!str) return '';
+    return str
+      .toLowerCase()
+      .trim()
+      // Remove diacritics / tashkeel
+      .replace(/[\u064B-\u065F\u0670]/g, '')
+      // Normalize Arabic letters
+      .replace(/[أإآٱ]/g, 'ا')
+      .replace(/ة/g, 'ه')
+      .replace(/ى/g, 'ي')
+      .replace(/ؤ/g, 'و')
+      .replace(/ئ/g, 'ي')
+      // Remove asterisk, parentheses, brackets, special symbols
+      .replace(/[-*()[\]{}:/#%$^&|_+\s]/g, ' ')
+      // Collapse multiple spaces
+      .replace(/\s+/g, '')
+      .trim();
+  }
+
+  /**
    * Auto-detect and match spreadsheet headers with target entity columns
    */
   public static detectAndMapColumns(
@@ -77,33 +100,54 @@ export class ExcelService {
     if (!config) return {};
 
     const mapping: Record<string, string> = {}; // canonicalKey -> fileHeader
+    const usedHeaders = new Set<string>();
 
     config.columns.forEach((col) => {
-      // 1. Direct match with key
-      let match = fileHeaders.find((h) => h.toLowerCase() === col.key.toLowerCase());
+      const normalizedKey = this.normalizeHeader(col.key);
+      const normalizedLabelAr = this.normalizeHeader(col.labelAr);
+      const normalizedLabelEn = this.normalizeHeader(col.labelEn);
+      const normalizedAliases = (col.aliases || []).map((a) => this.normalizeHeader(a));
 
-      // 2. Direct match with labelAr or labelEn
+      // 1. Direct exact or normalized match with key
+      let match = fileHeaders.find(
+        (h) => !usedHeaders.has(h) && (h.toLowerCase().trim() === col.key.toLowerCase() || this.normalizeHeader(h) === normalizedKey)
+      );
+
+      // 2. Direct or normalized match with labelAr or labelEn
       if (!match) {
-        match = fileHeaders.find(
-          (h) =>
-            h.toLowerCase() === col.labelAr.toLowerCase() ||
-            h.toLowerCase() === col.labelEn.toLowerCase()
-        );
+        match = fileHeaders.find((h) => {
+          if (usedHeaders.has(h)) return false;
+          const normH = this.normalizeHeader(h);
+          return normH === normalizedLabelAr || normH === normalizedLabelEn;
+        });
       }
 
       // 3. Match with aliases
-      if (!match && col.aliases) {
+      if (!match && normalizedAliases.length > 0) {
         match = fileHeaders.find((h) => {
-          const cleanH = h.toLowerCase().replace(/[\s_-]+/g, '');
-          return col.aliases.some((alias) => {
-            const cleanAlias = alias.toLowerCase().replace(/[\s_-]+/g, '');
-            return cleanH.includes(cleanAlias) || cleanAlias.includes(cleanH);
-          });
+          if (usedHeaders.has(h)) return false;
+          const normH = this.normalizeHeader(h);
+          return normalizedAliases.some((alias) => normH === alias);
+        });
+      }
+
+      // 4. Substring / partial match with aliases or labels
+      if (!match) {
+        match = fileHeaders.find((h) => {
+          if (usedHeaders.has(h)) return false;
+          const normH = this.normalizeHeader(h);
+          if (!normH) return false;
+          if (normH.includes(normalizedKey) || (normalizedKey.length > 3 && normalizedKey.includes(normH))) return true;
+          if (normalizedLabelAr && (normH.includes(normalizedLabelAr) || normalizedLabelAr.includes(normH))) return true;
+          return normalizedAliases.some(
+            (alias) => alias.length > 2 && (normH.includes(alias) || alias.includes(normH))
+          );
         });
       }
 
       if (match) {
         mapping[col.key] = match;
+        usedHeaders.add(match);
       }
     });
 
@@ -121,7 +165,17 @@ export class ExcelService {
       const canonicalObj: Record<string, unknown> = {};
       Object.entries(columnMapping).forEach(([canonicalKey, fileHeader]) => {
         if (fileHeader && raw[fileHeader] !== undefined) {
-          canonicalObj[canonicalKey] = raw[fileHeader];
+          let val = raw[fileHeader];
+          if (typeof val === 'string') {
+            val = val.trim();
+            // Boolean normalization for Arabic/English common values
+            if (val === 'نعم' || val === 'صح' || val === 'مفعل' || val === 'نشط' || val === 'true' || val === 'TRUE') {
+              val = true;
+            } else if (val === 'لا' || val === 'خطأ' || val === 'معطل' || val === 'غير نشط' || val === 'false' || val === 'FALSE') {
+              val = false;
+            }
+          }
+          canonicalObj[canonicalKey] = val;
         }
       });
       return canonicalObj;

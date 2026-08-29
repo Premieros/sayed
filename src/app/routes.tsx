@@ -2,7 +2,7 @@ import { Suspense, lazy, type ReactNode } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Layout } from '../components/Layout';
-import { useCan, type Permission } from '../lib/permissions';
+import { useCan, isAdminRole, type Permission } from '../lib/permissions';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import { FeatureLocked } from '../components/subscription/FeatureLocked';
 import { APP_ROUTES } from '@/core/navigation/routes';
@@ -69,6 +69,7 @@ function ProtectedRoute({
   fullscreen,
   subscriptionGate = true,
   superAdminOnly = false,
+  ownerOnly = false,
   feature,
 }: {
   children: ReactNode;
@@ -76,6 +77,7 @@ function ProtectedRoute({
   fullscreen?: boolean;
   subscriptionGate?: boolean;
   superAdminOnly?: boolean;
+  ownerOnly?: boolean;
   feature?: string;
 }) {
   const { session, loading, user, subscription } = useAuth();
@@ -85,13 +87,16 @@ function ProtectedRoute({
   if (loading) return <PageLoader />;
   if (!session) return <Navigate to={APP_ROUTES.login} replace />;
   if (superAdminOnly && user?.role !== 'super_admin') return <Navigate to={APP_ROUTES.dashboard} replace />;
+  if (ownerOnly && !isAdminRole(user?.role)) return <Navigate to={APP_ROUTES.dashboard} replace />;
   if (permission && !can(permission)) return <Navigate to={APP_ROUTES.dashboard} replace />;
-  if (subscriptionGate && user && user.role !== 'super_admin' && user.branch_id && subscription?.expired) {
-    return <Navigate to={APP_ROUTES.subscription} replace />;
+  if (subscriptionGate && user && user.branch_id && subscription?.expired) {
+    if (isAdminRole(user.role)) {
+      return <Navigate to={APP_ROUTES.subscription} replace />;
+    }
   }
 
   // Feature gate check
-  if (feature && user?.role !== 'super_admin' && !featureAccess.allowed) {
+  if (feature && !isAdminRole(user?.role) && !featureAccess.allowed) {
     if (fullscreen) {
       return (
         <FeatureLocked
@@ -129,7 +134,7 @@ export function AppRoutes() {
       <Routes>
         <Route path={APP_ROUTES.login} element={<PublicRoute><LoginPage /></PublicRoute>} />
         <Route path={APP_ROUTES.register} element={<PublicRoute><RegisterPage /></PublicRoute>} />
-        <Route path={APP_ROUTES.subscription} element={<ProtectedRoute subscriptionGate={false}><SubscriptionPage /></ProtectedRoute>} />
+        <Route path={APP_ROUTES.subscription} element={<ProtectedRoute subscriptionGate={false} ownerOnly><SubscriptionPage /></ProtectedRoute>} />
         <Route path={APP_ROUTES.dashboard} element={<ProtectedRoute permission="dashboard.view"><DashboardPage /></ProtectedRoute>} />
         <Route path={APP_ROUTES.operationsCenter} element={<ProtectedRoute permission="dashboard.view"><OperationsCenterPage /></ProtectedRoute>} />
         <Route path={APP_ROUTES.inventoryCenter} element={<ProtectedRoute permission="inventory.view" feature="inventory"><InventoryCenterPage /></ProtectedRoute>} />

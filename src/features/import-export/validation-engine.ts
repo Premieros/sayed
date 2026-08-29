@@ -681,20 +681,34 @@ export class ValidationEngine {
 
     const errorRowIndices = new Set(errors.map((e) => e.rowNumber));
     const warningRowIndices = new Set(warnings.map((w) => w.rowNumber));
+    const validRowIndices: number[] = [];
+    const invalidRowIndices: number[] = [];
+
+    rawRows.forEach((_, idx) => {
+      const rowNum = idx + 2;
+      if (errorRowIndices.has(rowNum)) {
+        invalidRowIndices.push(idx);
+      } else {
+        validRowIndices.push(idx);
+      }
+    });
+
     const errorRowCount = errorRowIndices.size;
     const warningRowCount = warningRowIndices.size;
-    const validRowCount = rawRows.length - errorRowCount;
+    const validRowCount = validRowIndices.length;
 
     const groupedSummary = Array.from(groupedSummaryMap.values());
 
     return {
       totalRows: rawRows.length,
-      validRows: Math.max(0, validRowCount),
+      validRows: validRowCount,
       errorRows: errorRowCount,
       warningRows: warningRowCount,
       errors,
       warnings,
-      canProceed: errors.length === 0,
+      canProceed: validRowCount > 0,
+      validRowIndices,
+      invalidRowIndices,
       groupedEntitiesCount: groupedSummary.length > 0 ? groupedSummary.length : undefined,
       groupedSummary: groupedSummary.length > 0 ? groupedSummary : undefined,
     };

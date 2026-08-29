@@ -8,7 +8,8 @@ import {
   Store, Tags, Timer, Trash2, Truck, UserCog, Users, Wallet, Warehouse,
 } from 'lucide-react';
 import { useLanguage } from '@/context/LanguageContext';
-import { useCan, type Permission } from '@/lib/permissions';
+import { useAuth } from '@/context/AuthContext';
+import { useCan, isAdminRole, type Permission } from '@/lib/permissions';
 import { APP_ROUTES } from '@/core/navigation/routes';
 import { MENU_ITEMS } from '@/core/navigation/menu.config';
 
@@ -37,6 +38,8 @@ export interface CommandItem {
   descriptionEn: string;
   permission?: Permission;
   icon: typeof Package;
+  superAdminOnly?: boolean;
+  ownerOnly?: boolean;
 }
 
 const LABEL_MAP: Record<string, { ar: string; en: string }> = {
@@ -102,6 +105,8 @@ function buildCommandItems(): CommandItem[] {
       descriptionEn: '',
       permission: mi.permission,
       icon: ICON_MAP[mi.icon] ?? Package,
+      superAdminOnly: mi.superAdminOnly,
+      ownerOnly: mi.ownerOnly,
     });
   }
 
@@ -139,6 +144,7 @@ function matchesQuery(item: CommandItem, query: string): boolean {
 
 export function CommandPalette() {
   const { lang } = useLanguage();
+  const { user } = useAuth();
   const can = useCan();
   const navigate = useNavigate();
   const ar = lang === 'ar';
@@ -168,11 +174,14 @@ export function CommandPalette() {
   }, [open]);
 
   const filtered = useMemo(() => {
+    const isOwner = isAdminRole(user?.role);
     return ALL_COMMANDS.filter((item) => {
+      if (item.superAdminOnly && user?.role !== 'super_admin') return false;
+      if (item.ownerOnly && !isOwner) return false;
       if (item.permission && !can(item.permission)) return false;
       return matchesQuery(item, query);
     });
-  }, [query, can]);
+  }, [query, can, user?.role]);
 
   useEffect(() => {
     setSelectedIndex(0);

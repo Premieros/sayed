@@ -115,8 +115,14 @@ export function Layout({ children }: { children: ReactNode }) {
   }, [branchMenuOpen]);
 
   const visibleItems = useMemo(
-    () => MENU_ITEMS.filter((item) => (!item.permission || can(item.permission)) && (!item.superAdminOnly || user?.role === 'super_admin')),
-    [can, user?.role],
+    () =>
+      MENU_ITEMS.filter(
+        (item) =>
+          (!item.permission || can(item.permission)) &&
+          (!item.superAdminOnly || user?.role === 'super_admin') &&
+          (!item.ownerOnly || isAdmin),
+      ),
+    [can, user?.role, isAdmin],
   );
   const grouped = useMemo(() => visibleItems.reduce<Record<MenuGroup, typeof visibleItems>>((acc, item) => {
     (acc[item.group] ??= []).push(item);

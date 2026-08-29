@@ -327,7 +327,8 @@ export function ImportExportCenterPage() {
         mappedRows,
         collisionPolicy,
         validationContext,
-        (prog) => setProgress(prog)
+        (prog) => setProgress(prog),
+        validationSummary
       );
 
       setFinalResult(result);
@@ -1015,6 +1016,31 @@ export function ImportExportCenterPage() {
                     })}
                   </div>
 
+                  {/* Informational banner on matching vs non-matching rows */}
+                  {validationSummary.errorRows > 0 && (
+                    <div className="p-3.5 rounded-xl border border-amber-500/30 bg-amber-500/10 text-xs text-amber-900 dark:text-amber-200 flex flex-wrap items-center justify-between gap-3">
+                      <div className="flex items-center gap-2">
+                        <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                        <span>
+                          {isAr
+                            ? `تنبيه: سيتم استيراد ${validationSummary.validRows} سجل مطابق وصالح، وتخطي ${validationSummary.errorRows} سجل غير مطابق لاحتوائه على أخطاء.`
+                            : `Notice: ${validationSummary.validRows} matching records will be imported, while ${validationSummary.errorRows} non-matching records will be skipped.`}
+                        </span>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() =>
+                          ExcelService.downloadErrorReport(validationSummary.errors, selectedEntity, isAr ? 'ar' : 'en')
+                        }
+                        className="text-xs shrink-0 border-amber-500/40 text-amber-900 dark:text-amber-200 hover:bg-amber-500/20"
+                      >
+                        <Download className="w-3.5 h-3.5 mr-1" />
+                        {isAr ? 'تنزيل تقرير الأخطاء Excel' : 'Download Errors Excel'}
+                      </Button>
+                    </div>
+                  )}
+
                   <div className="flex items-center justify-between pt-3 border-t border-border">
                     <Button variant="ghost" onClick={() => setWizardStep(2)}>
                       {isAr ? 'السابق' : 'Back'}
@@ -1023,14 +1049,14 @@ export function ImportExportCenterPage() {
                     <Button
                       size="lg"
                       onClick={handleExecuteImport}
-                      disabled={isExecuting || (validationSummary.errors.length > 0 && collisionPolicy === 'stop_on_error')}
+                      disabled={isExecuting || validationSummary.validRows === 0}
                       className="gap-2 px-8 bg-primary text-primary-foreground shadow-md hover:bg-primary/90"
                     >
                       <Upload className="w-4 h-4" />
                       <span>
                         {isAr
-                          ? `بدء تنفيذ استيراد ${validationSummary.validRows} سجل`
-                          : `Execute Bulk Import (${validationSummary.validRows} rows)`}
+                          ? `بدء استيراد السجلات المطابقة (${validationSummary.validRows} من ${validationSummary.totalRows})`
+                          : `Import Matching Records (${validationSummary.validRows} of ${validationSummary.totalRows})`}
                       </span>
                     </Button>
                   </div>

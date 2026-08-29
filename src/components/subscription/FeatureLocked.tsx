@@ -2,6 +2,8 @@ import React from 'react';
 import { Lock, Sparkles, ArrowLeft, ShieldAlert } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { APP_ROUTES } from '@/core/navigation/routes';
+import { useAuth } from '@/context/AuthContext';
+import { isAdminRole } from '@/lib/permissions';
 import { FEATURE_REGISTRY, type RejectionReason } from '../../services/subscription';
 
 interface FeatureLockedProps {
@@ -20,6 +22,8 @@ export const FeatureLocked: React.FC<FeatureLockedProps> = ({
   description,
 }) => {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const isOwner = isAdminRole(user?.role);
   const feat = FEATURE_REGISTRY[featureKey];
 
   const displayTitle = title || feat?.name_ar || 'ميزة مقفولة';
@@ -61,7 +65,7 @@ export const FeatureLocked: React.FC<FeatureLockedProps> = ({
       </p>
 
       <div className="flex items-center justify-center gap-3">
-        {!isSuspendedOrBranch && (
+        {!isSuspendedOrBranch && isOwner && (
           <button
             id={`btn-upgrade-feature-${featureKey}`}
             onClick={() => navigate(APP_ROUTES.subscription)}

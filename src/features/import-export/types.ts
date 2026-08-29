@@ -64,6 +64,8 @@ export interface ValidationSummary {
   errors: ValidationError[];
   warnings: ValidationError[];
   canProceed: boolean;
+  validRowIndices?: number[];
+  invalidRowIndices?: number[];
   groupedEntitiesCount?: number;
   groupedSummary?: { id: string; name: string; count: number; valid: boolean }[];
 }

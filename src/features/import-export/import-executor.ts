@@ -6,6 +6,7 @@ import {
   ImportProgress,
   ImportResult,
   ValidationError,
+  ValidationSummary,
 } from './types';
 import { ValidationContext } from './validation-engine';
 
@@ -15,7 +16,8 @@ export class ImportExecutor {
     mappedRows: Record<string, unknown>[],
     policy: CollisionPolicy,
     context: ValidationContext,
-    onProgress?: (progress: ImportProgress) => void
+    onProgress?: (progress: ImportProgress) => void,
+    validationSummary?: ValidationSummary | null
   ): Promise<ImportResult> {
     const startTime = Date.now();
     const totalRows = mappedRows.length;
@@ -24,6 +26,13 @@ export class ImportExecutor {
     let skippedCount = 0;
     let errorCount = 0;
     const errors: ValidationError[] = [];
+
+    // Pre-populate validation errors from summary if any
+    const invalidRowIndices = new Set<number>(validationSummary?.invalidRowIndices || []);
+
+    if (validationSummary?.errors && validationSummary.errors.length > 0) {
+      errors.push(...validationSummary.errors);
+    }
 
     const updateProgress = (current: number, stepMsg: string) => {
       if (onProgress) {
@@ -48,16 +57,41 @@ export class ImportExecutor {
           for (let i = 0; i < mappedRows.length; i++) {
             const row = mappedRows[i];
             const rowNumber = i + 2;
+
+            // Strict Separation: Skip rows that failed validation
+            if (invalidRowIndices.has(i)) {
+              skippedCount++;
+              errorCount++;
+              updateProgress(i + 1, `تخطي السجل غير المطابق (${i + 1} / ${totalRows})`);
+              continue;
+            }
+
             const sku = String(row.sku || '').trim();
             const barcode = row.barcode ? String(row.barcode).trim() : null;
             const name = String(row.name || '').trim();
             const name_en = row.name_en ? String(row.name_en).trim() : null;
             const categoryName = row.category ? String(row.category).trim() : null;
-            const unitName = row.unit ? String(row.unit).trim() : 'piece';
+            const unitName = row.unit ? String(row.unit).trim() : 'قطعة';
             const cost = row.cost !== undefined && row.cost !== '' ? Number(row.cost) : 0;
             const price = Number(row.price || 0);
             const tax_rate = row.tax_rate !== undefined && row.tax_rate !== '' ? Number(row.tax_rate) : 15;
             const is_active = row.is_active !== undefined ? Boolean(row.is_active) : true;
+
+            if (!name || !sku) {
+              skippedCount++;
+              errorCount++;
+              errors.push({
+                rowNumber,
+                column: 'اسم المنتج / الكود',
+                value: name,
+                message: 'اسم المنتج وكود SKU إجباريان.',
+                messageEn: 'Product name and SKU are required.',
+                remedy: 'أدخل اسماً وكوداً صحيحين.',
+                remedyEn: 'Enter valid name and SKU.',
+                severity: 'error',
+              });
+              continue;
+            }
 
             updateProgress(i + 1, `معالجة المنتج (${i + 1} / ${totalRows}): ${name}`);
 
@@ -75,34 +109,36 @@ export class ImportExecutor {
                   categoryId = foundCat.id;
                 } else {
                   // Auto create category
-                  const { data: newCat } = await supabase
-                    .from('categories')
-                    .insert({ name: categoryName, name_en: categoryName, is_active: true })
-                    .select()
-                    .maybeSingle();
-                  if (newCat) {
-                    categoryId = (newCat as { id: string }).id;
-                    context.existingCategories.push(newCat as { id: string; name: string });
+                  try {
+                    const { data: newCat } = await supabase
+                      .from('categories')
+                      .insert({ name: categoryName, name_en: categoryName, is_active: true })
+                      .select()
+                      .maybeSingle();
+                    if (newCat) {
+                      categoryId = (newCat as { id: string }).id;
+                      context.existingCategories.push(newCat as { id: string; name: string });
+                    }
+                  } catch {
+                    // Category insert failed, continue without category
                   }
                 }
               }
 
-              // Check existing product by SKU
+              // Check existing product by SKU or Barcode
               const existingProd = context.existingProducts.find(
-                (p) => p.sku?.toLowerCase() === sku.toLowerCase()
+                (p) =>
+                  (sku && p.sku?.toLowerCase() === sku.toLowerCase()) ||
+                  (barcode && p.barcode && p.barcode === barcode)
               );
 
               if (existingProd) {
-                if (policy === 'skip_existing') {
+                if (policy === 'skip_existing' || policy === 'add_only') {
                   skippedCount++;
                   continue;
                 }
                 if (policy === 'stop_on_error') {
                   throw new Error(`المنتج بالرمز ${sku} موجود مسبقاً.`);
-                }
-                if (policy === 'add_only') {
-                  skippedCount++;
-                  continue;
                 }
 
                 // update_existing
@@ -110,9 +146,9 @@ export class ImportExecutor {
                   .from('products')
                   .update({
                     name,
-                    name_en,
-                    barcode,
-                    category_id: categoryId,
+                    name_en: name_en || undefined,
+                    barcode: barcode || undefined,
+                    category_id: categoryId || undefined,
                     cost_price: cost,
                     sale_price: price,
                     is_active,
@@ -129,9 +165,9 @@ export class ImportExecutor {
                   .insert({
                     sku,
                     name,
-                    name_en,
-                    barcode,
-                    category_id: categoryId,
+                    name_en: name_en || null,
+                    barcode: barcode || null,
+                    category_id: categoryId || null,
                     cost_price: cost,
                     sale_price: price,
                     product_type: 'ready',
@@ -149,21 +185,25 @@ export class ImportExecutor {
                     id: pid,
                     sku,
                     name,
-                    barcode,
-                    category_id: categoryId,
+                    barcode: barcode || undefined,
+                    category_id: categoryId || undefined,
                     unit: unitName,
                   });
 
-                  // Add default unit
-                  await supabase.from('product_units').insert({
-                    product_id: pid,
-                    unit_name: unitName,
-                    unit_name_en: unitName,
-                    conversion_factor: 1,
-                    sale_price: price,
-                    cost_price: cost,
-                    is_base: true,
-                  });
+                  // Add default unit safely
+                  try {
+                    await supabase.from('product_units').insert({
+                      product_id: pid,
+                      unit_name: unitName,
+                      unit_name_en: unitName,
+                      conversion_factor: 1,
+                      sale_price: price,
+                      cost_price: cost,
+                      is_base: true,
+                    });
+                  } catch {
+                    // Ignore unit errors to avoid failing the whole product
+                  }
                 }
                 insertedCount++;
               }
@@ -191,16 +231,31 @@ export class ImportExecutor {
           for (let i = 0; i < mappedRows.length; i++) {
             const row = mappedRows[i];
             const rowNumber = i + 2;
+
+            if (invalidRowIndices.has(i)) {
+              skippedCount++;
+              errorCount++;
+              continue;
+            }
+
             const code = String(row.code || '').trim();
             const name = String(row.name || '').trim();
             const name_en = row.name_en ? String(row.name_en).trim() : null;
             const is_active = row.is_active !== undefined ? Boolean(row.is_active) : true;
 
+            if (!name) {
+              skippedCount++;
+              errorCount++;
+              continue;
+            }
+
             updateProgress(i + 1, `معالجة الفئة (${i + 1} / ${totalRows}): ${name}`);
 
             try {
               const existingCat = context.existingCategories.find(
-                (c) => c.code?.toLowerCase() === code.toLowerCase() || c.name?.toLowerCase() === name.toLowerCase()
+                (c) =>
+                  (code && c.code?.toLowerCase() === code.toLowerCase()) ||
+                  c.name?.toLowerCase() === name.toLowerCase()
               );
 
               if (existingCat) {
@@ -210,14 +265,14 @@ export class ImportExecutor {
                 }
                 const { error: updErr } = await supabase
                   .from('categories')
-                  .update({ name, name_en, code, is_active })
+                  .update({ name, name_en, code: code || undefined, is_active })
                   .eq('id', existingCat.id);
                 if (updErr) throw updErr;
                 updatedCount++;
               } else {
                 const { data: insCat, error: insErr } = await supabase
                   .from('categories')
-                  .insert({ name, name_en, code, is_active })
+                  .insert({ name, name_en, code: code || null, is_active })
                   .select()
                   .single();
                 if (insErr) throw insErr;
@@ -249,12 +304,25 @@ export class ImportExecutor {
           for (let i = 0; i < mappedRows.length; i++) {
             const row = mappedRows[i];
             const rowNumber = i + 2;
+
+            if (invalidRowIndices.has(i)) {
+              skippedCount++;
+              errorCount++;
+              continue;
+            }
+
             const sku = String(row.sku || '').trim();
             const name = String(row.name || '').trim();
             const unit = String(row.unit || 'كجم').trim();
             const cost = Number(row.cost || 0);
             const min_stock = Number(row.min_stock || 0);
             const is_active = row.is_active !== undefined ? Boolean(row.is_active) : true;
+
+            if (!name || !sku) {
+              skippedCount++;
+              errorCount++;
+              continue;
+            }
 
             updateProgress(i + 1, `معالجة المادة الخام (${i + 1} / ${totalRows}): ${name}`);
 
@@ -325,6 +393,7 @@ export class ImportExecutor {
           const rowNumberMap = new Map<string, number>();
 
           mappedRows.forEach((r, idx) => {
+            if (invalidRowIndices.has(idx)) return;
             const prodSku = String(r.product_sku || '').trim();
             const compSku = String(r.component_sku || '').trim();
             const qty = Number(r.quantity || 0);
@@ -435,9 +504,13 @@ export class ImportExecutor {
               }
 
               // 5. Sync product_components
-              await supabase.from('product_components').delete().eq('product_id', product.id);
-              if (productCompPayloads.length > 0) {
-                await supabase.from('product_components').insert(productCompPayloads);
+              try {
+                await supabase.from('product_components').delete().eq('product_id', product.id);
+                if (productCompPayloads.length > 0) {
+                  await supabase.from('product_components').insert(productCompPayloads);
+                }
+              } catch {
+                // Ignore components link errors if not using components table
               }
             } catch (err: unknown) {
               errorCount += compItems.length;
@@ -459,10 +532,80 @@ export class ImportExecutor {
           break;
         }
 
+        case 'prices': {
+          for (let i = 0; i < mappedRows.length; i++) {
+            const row = mappedRows[i];
+            const rowNumber = i + 2;
+
+            if (invalidRowIndices.has(i)) {
+              skippedCount++;
+              errorCount++;
+              continue;
+            }
+
+            const sku = String(row.sku || '').trim();
+            const sale_price = Number(row.sale_price || 0);
+
+            if (!sku || sale_price <= 0) {
+              skippedCount++;
+              errorCount++;
+              continue;
+            }
+
+            updateProgress(i + 1, `تحديث سعر الصنف (${i + 1} / ${totalRows}): ${sku}`);
+
+            try {
+              const product = context.existingProducts.find(
+                (p) => p.sku?.toLowerCase() === sku.toLowerCase()
+              );
+
+              if (!product) {
+                throw new Error(`المنتج بالرمز ${sku} غير موجود`);
+              }
+
+              const { error: updErr } = await supabase
+                .from('products')
+                .update({ sale_price })
+                .eq('id', product.id);
+
+              if (updErr) throw updErr;
+
+              // Also update default product unit price if exists
+              try {
+                await supabase
+                  .from('product_units')
+                  .update({ sale_price })
+                  .eq('product_id', product.id)
+                  .eq('is_base', true);
+              } catch {
+                // Ignore unit price error
+              }
+
+              updatedCount++;
+            } catch (err: unknown) {
+              errorCount++;
+              const msg = err instanceof Error ? err.message : String(err);
+              errors.push({
+                rowNumber,
+                column: 'سعر البيع',
+                value: sku,
+                message: `فشل تحديث سعر المنتج: ${msg}`,
+                messageEn: `Failed to update price: ${msg}`,
+                remedy: 'تحقق من صحة كود المنتج والمبلغ.',
+                remedyEn: 'Verify SKU and amount.',
+                severity: 'error',
+              });
+              if (policy === 'stop_on_error') break;
+            }
+          }
+          break;
+        }
+
         case 'purchases': {
           // Group by purchase_no
           const invoiceGroups = new Map<string, Array<Record<string, unknown>>>();
-          mappedRows.forEach((r) => {
+          mappedRows.forEach((r, idx) => {
+            if (invalidRowIndices.has(idx)) return;
             const pno = String(r.purchase_no || '').trim();
             if (!pno) return;
             if (!invoiceGroups.has(pno)) invoiceGroups.set(pno, []);
@@ -572,7 +715,7 @@ export class ImportExecutor {
                   ...line,
                 });
 
-                // Update inventory balances & log stock movement
+                // Update inventory movements
                 if (line.raw_material_id) {
                   await supabase.from('inventory_movements').insert({
                     raw_material_id: line.raw_material_id,
@@ -621,12 +764,25 @@ export class ImportExecutor {
           for (let i = 0; i < mappedRows.length; i++) {
             const row = mappedRows[i];
             const rowNumber = i + 2;
+
+            if (invalidRowIndices.has(i)) {
+              skippedCount++;
+              errorCount++;
+              continue;
+            }
+
             const sku = String(row.sku || '').trim();
             const whStr = String(row.warehouse || '').trim();
             const qty = Number(row.quantity || 0);
             const cost = Number(row.unit_cost || 0);
             const batch = row.batch_number ? String(row.batch_number).trim() : null;
             const expiry = row.expiry_date ? String(row.expiry_date).trim() : null;
+
+            if (!sku || !whStr || qty <= 0) {
+              skippedCount++;
+              errorCount++;
+              continue;
+            }
 
             updateProgress(i + 1, `معالجة الرصيد الافتتاحي (${i + 1} / ${totalRows}): ${sku}`);
 
@@ -677,10 +833,188 @@ export class ImportExecutor {
           break;
         }
 
+        case 'production': {
+          for (let i = 0; i < mappedRows.length; i++) {
+            const row = mappedRows[i];
+            const rowNumber = i + 2;
+
+            if (invalidRowIndices.has(i)) {
+              skippedCount++;
+              errorCount++;
+              continue;
+            }
+
+            const prodNo = String(row.production_no || '').trim();
+            const dateStr = String(row.date || new Date().toISOString().slice(0, 10)).trim();
+            const whStr = String(row.warehouse || '').trim();
+            const sku = String(row.product_sku || '').trim();
+            const qty = Number(row.quantity || 0);
+
+            if (!prodNo || !sku || qty <= 0) {
+              skippedCount++;
+              errorCount++;
+              continue;
+            }
+
+            updateProgress(i + 1, `معالجة أمر الإنتاج (${i + 1} / ${totalRows}): ${prodNo}`);
+
+            try {
+              const product = context.existingProducts.find(
+                (p) => p.sku?.toLowerCase() === sku.toLowerCase() || p.id === sku
+              );
+              if (!product) throw new Error(`المنتج التام "${sku}" غير مسجل.`);
+
+              const warehouse = context.existingWarehouses.find(
+                (w) =>
+                  w.code?.toLowerCase() === whStr.toLowerCase() ||
+                  w.name?.toLowerCase() === whStr.toLowerCase() ||
+                  w.id === whStr
+              );
+              if (!warehouse) throw new Error(`المستودع "${whStr}" غير مسجل.`);
+
+              // Create production order
+              await supabase.from('production_orders').insert({
+                order_number: prodNo,
+                product_id: product.id,
+                planned_quantity: qty,
+                actual_quantity: qty,
+                warehouse_id: warehouse.id,
+                branch_id: warehouse.branch_id || context.userBranchId || null,
+                status: 'completed',
+                order_date: dateStr,
+                notes: 'استيراد أمر إنتاج عبر الإكسل',
+              });
+
+              // Add finished product stock
+              await supabase.from('inventory_movements').insert({
+                product_id: product.id,
+                warehouse_id: warehouse.id,
+                movement_type: 'production_in',
+                quantity: qty,
+                unit_cost: product.cost_price || 0,
+                notes: `أمر إنتاج ${prodNo}`,
+              });
+
+              insertedCount++;
+            } catch (err: unknown) {
+              errorCount++;
+              const msg = err instanceof Error ? err.message : String(err);
+              errors.push({
+                rowNumber,
+                column: 'أمر الإنتاج',
+                value: prodNo,
+                message: `فشل استيراد أمر الإنتاج: ${msg}`,
+                messageEn: `Failed production order import: ${msg}`,
+                remedy: 'تحقق من صحة المنتج التام والمستودع والكمية.',
+                remedyEn: 'Verify finished product, warehouse, and quantity.',
+                severity: 'error',
+              });
+              if (policy === 'stop_on_error') break;
+            }
+          }
+          break;
+        }
+
+        case 'transfers': {
+          for (let i = 0; i < mappedRows.length; i++) {
+            const row = mappedRows[i];
+            const rowNumber = i + 2;
+
+            if (invalidRowIndices.has(i)) {
+              skippedCount++;
+              errorCount++;
+              continue;
+            }
+
+            const trNo = String(row.transfer_no || '').trim();
+            const dateStr = String(row.date || new Date().toISOString().slice(0, 10)).trim();
+            const fromWhStr = String(row.from_warehouse || '').trim();
+            const toWhStr = String(row.to_warehouse || '').trim();
+            const sku = String(row.sku || '').trim();
+            const qty = Number(row.quantity || 0);
+            const notes = row.notes ? String(row.notes).trim() : 'مناقلة مخزنية مستوردة';
+
+            if (!trNo || !fromWhStr || !toWhStr || !sku || qty <= 0) {
+              skippedCount++;
+              errorCount++;
+              continue;
+            }
+
+            updateProgress(i + 1, `معالجة سند التحويل (${i + 1} / ${totalRows}): ${trNo}`);
+
+            try {
+              const fromWh = context.existingWarehouses.find(
+                (w) =>
+                  w.code?.toLowerCase() === fromWhStr.toLowerCase() ||
+                  w.name?.toLowerCase() === fromWhStr.toLowerCase() ||
+                  w.id === fromWhStr
+              );
+              const toWh = context.existingWarehouses.find(
+                (w) =>
+                  w.code?.toLowerCase() === toWhStr.toLowerCase() ||
+                  w.name?.toLowerCase() === toWhStr.toLowerCase() ||
+                  w.id === toWhStr
+              );
+
+              if (!fromWh) throw new Error(`المستودع المصدر "${fromWhStr}" غير مسجل.`);
+              if (!toWh) throw new Error(`المستودع الوجهة "${toWhStr}" غير مسجل.`);
+
+              const raw = context.existingComponents.find((c) => c.sku?.toLowerCase() === sku.toLowerCase());
+              const prod = context.existingProducts.find((p) => p.sku?.toLowerCase() === sku.toLowerCase());
+
+              if (!raw && !prod) throw new Error(`الصنف "${sku}" غير مسجل.`);
+
+              // Deduct from source warehouse
+              await supabase.from('inventory_movements').insert({
+                product_id: prod?.id || null,
+                raw_material_id: raw?.id || null,
+                warehouse_id: fromWh.id,
+                movement_type: 'transfer_out',
+                quantity: -qty,
+                notes: `تحويل بتاريخ ${dateStr} إلى ${toWh.name} (سند ${trNo}) - ${notes}`,
+              });
+
+              // Add to destination warehouse
+              await supabase.from('inventory_movements').insert({
+                product_id: prod?.id || null,
+                raw_material_id: raw?.id || null,
+                warehouse_id: toWh.id,
+                movement_type: 'transfer_in',
+                quantity: qty,
+                notes: `تحويل بتاريخ ${dateStr} من ${fromWh.name} (سند ${trNo}) - ${notes}`,
+              });
+
+              insertedCount++;
+            } catch (err: unknown) {
+              errorCount++;
+              const msg = err instanceof Error ? err.message : String(err);
+              errors.push({
+                rowNumber,
+                column: 'التحويل المخزني',
+                value: trNo,
+                message: `فشل استيراد التحويل: ${msg}`,
+                messageEn: `Failed transfer import: ${msg}`,
+                remedy: 'تحقق من توفر الصنف وصحة المستودعات.',
+                remedyEn: 'Check item and warehouse validity.',
+                severity: 'error',
+              });
+              if (policy === 'stop_on_error') break;
+            }
+          }
+          break;
+        }
+
         case 'suppliers': {
           for (let i = 0; i < mappedRows.length; i++) {
             const row = mappedRows[i];
             const rowNumber = i + 2;
+
+            if (invalidRowIndices.has(i)) {
+              skippedCount++;
+              errorCount++;
+              continue;
+            }
+
             const code = String(row.code || '').trim();
             const name = String(row.name || '').trim();
             const contact_person = row.contact_person ? String(row.contact_person).trim() : null;
@@ -690,11 +1024,19 @@ export class ImportExecutor {
             const address = row.address ? String(row.address).trim() : null;
             const is_active = row.is_active !== undefined ? Boolean(row.is_active) : true;
 
+            if (!name) {
+              skippedCount++;
+              errorCount++;
+              continue;
+            }
+
             updateProgress(i + 1, `معالجة المورد (${i + 1} / ${totalRows}): ${name}`);
 
             try {
               const existingSupp = context.existingSuppliers.find(
-                (s) => s.code?.toLowerCase() === code.toLowerCase() || s.name?.toLowerCase() === name.toLowerCase()
+                (s) =>
+                  (code && s.code?.toLowerCase() === code.toLowerCase()) ||
+                  s.name?.toLowerCase() === name.toLowerCase()
               );
 
               if (existingSupp) {
@@ -704,14 +1046,14 @@ export class ImportExecutor {
                 }
                 const { error: updErr } = await supabase
                   .from('suppliers')
-                  .update({ code, name, contact_person, phone, email, tax_number, address, is_active })
+                  .update({ code: code || undefined, name, contact_person, phone, email, tax_number, address, is_active })
                   .eq('id', existingSupp.id);
                 if (updErr) throw updErr;
                 updatedCount++;
               } else {
                 const { data: insSupp, error: insErr } = await supabase
                   .from('suppliers')
-                  .insert({ code, name, contact_person, phone, email, tax_number, address, is_active })
+                  .insert({ code: code || null, name, contact_person, phone, email, tax_number, address, is_active })
                   .select()
                   .single();
                 if (insErr) throw insErr;
@@ -743,6 +1085,13 @@ export class ImportExecutor {
           for (let i = 0; i < mappedRows.length; i++) {
             const row = mappedRows[i];
             const rowNumber = i + 2;
+
+            if (invalidRowIndices.has(i)) {
+              skippedCount++;
+              errorCount++;
+              continue;
+            }
+
             const code = String(row.code || '').trim();
             const name = String(row.name || '').trim();
             const phone = row.phone ? String(row.phone).trim() : null;
@@ -751,11 +1100,19 @@ export class ImportExecutor {
             const credit_limit = Number(row.credit_limit || 0);
             const is_active = row.is_active !== undefined ? Boolean(row.is_active) : true;
 
+            if (!name) {
+              skippedCount++;
+              errorCount++;
+              continue;
+            }
+
             updateProgress(i + 1, `معالجة العميل (${i + 1} / ${totalRows}): ${name}`);
 
             try {
               const existingCust = context.existingCustomers.find(
-                (c) => c.code?.toLowerCase() === code.toLowerCase() || c.phone === phone
+                (c) =>
+                  (code && c.code?.toLowerCase() === code.toLowerCase()) ||
+                  (phone && c.phone === phone)
               );
 
               if (existingCust) {
@@ -765,14 +1122,14 @@ export class ImportExecutor {
                 }
                 const { error: updErr } = await supabase
                   .from('customers')
-                  .update({ code, name, phone, email, tax_number, credit_limit, is_active })
+                  .update({ code: code || undefined, name, phone, email, tax_number, credit_limit, is_active })
                   .eq('id', existingCust.id);
                 if (updErr) throw updErr;
                 updatedCount++;
               } else {
                 const { data: insCust, error: insErr } = await supabase
                   .from('customers')
-                  .insert({ code, name, phone, email, tax_number, credit_limit, is_active })
+                  .insert({ code: code || null, name, phone, email, tax_number, credit_limit, is_active })
                   .select()
                   .single();
                 if (insErr) throw insErr;
@@ -804,7 +1161,14 @@ export class ImportExecutor {
           for (let i = 0; i < mappedRows.length; i++) {
             const row = mappedRows[i];
             const rowNumber = i + 2;
-            const expense_no = String(row.expense_no || '').trim();
+
+            if (invalidRowIndices.has(i)) {
+              skippedCount++;
+              errorCount++;
+              continue;
+            }
+
+            const expense_no = String(row.expense_no || `EXP-${Date.now()}-${i}`).trim();
             const category = String(row.category || 'مصروف عام').trim();
             const amount = Number(row.amount || 0);
             const tax_amount = Number(row.tax_amount || 0);
@@ -812,6 +1176,12 @@ export class ImportExecutor {
             const branchStr = row.branch ? String(row.branch).trim() : '';
             const payment_method = row.payment_method ? String(row.payment_method).trim() : 'cash';
             const description = row.description ? String(row.description).trim() : '';
+
+            if (amount <= 0) {
+              skippedCount++;
+              errorCount++;
+              continue;
+            }
 
             updateProgress(i + 1, `معالجة المصروف (${i + 1} / ${totalRows}): ${category}`);
 
@@ -852,9 +1222,104 @@ export class ImportExecutor {
           break;
         }
 
-        default: {
-          // Fallback for other tables
+        case 'users': {
           for (let i = 0; i < mappedRows.length; i++) {
+            const row = mappedRows[i];
+            const rowNumber = i + 2;
+
+            if (invalidRowIndices.has(i)) {
+              skippedCount++;
+              errorCount++;
+              continue;
+            }
+
+            const username = String(row.username || '').trim().toLowerCase();
+            const full_name = String(row.full_name || '').trim();
+            const email = row.email ? String(row.email).trim().toLowerCase() : `${username}@premier.sa`;
+            const role = String(row.role || 'cashier').trim().toLowerCase();
+            const branchStr = row.branch ? String(row.branch).trim() : '';
+            const is_active = row.is_active !== undefined ? Boolean(row.is_active) : true;
+
+            if (!username || !full_name) {
+              skippedCount++;
+              errorCount++;
+              continue;
+            }
+
+            updateProgress(i + 1, `معالجة حساب المستخدم (${i + 1} / ${totalRows}): ${username}`);
+
+            try {
+              const branch = branchStr
+                ? context.existingBranches.find((b) => b.name?.toLowerCase() === branchStr.toLowerCase())
+                : null;
+
+              const existingUser = context.existingUsers.find(
+                (u) => u.username?.toLowerCase() === username || u.email?.toLowerCase() === email
+              );
+
+              if (existingUser) {
+                if (policy === 'skip_existing' || policy === 'add_only') {
+                  skippedCount++;
+                  continue;
+                }
+                const { error: updErr } = await supabase
+                  .from('users')
+                  .update({
+                    full_name,
+                    role,
+                    branch_id: branch?.id || undefined,
+                    is_active,
+                  })
+                  .eq('id', existingUser.id);
+
+                if (updErr) throw updErr;
+                updatedCount++;
+              } else {
+                const { data: insUser, error: insErr } = await supabase
+                  .from('users')
+                  .insert({
+                    username,
+                    full_name,
+                    email,
+                    role,
+                    branch_id: branch?.id || context.userBranchId || null,
+                    is_active,
+                  })
+                  .select()
+                  .single();
+
+                if (insErr) throw insErr;
+                if (insUser) {
+                  context.existingUsers.push(insUser as { id: string; username: string; email: string });
+                }
+                insertedCount++;
+              }
+            } catch (err: unknown) {
+              errorCount++;
+              const msg = err instanceof Error ? err.message : String(err);
+              errors.push({
+                rowNumber,
+                column: 'المستخدم',
+                value: username,
+                message: `فشل استيراد المستخدم: ${msg}`,
+                messageEn: `Failed user account import: ${msg}`,
+                remedy: 'تحقق من عدم تكرار اسم المستخدم والبريد.',
+                remedyEn: 'Ensure unique username and email.',
+                severity: 'error',
+              });
+              if (policy === 'stop_on_error') break;
+            }
+          }
+          break;
+        }
+
+        default: {
+          for (let i = 0; i < mappedRows.length; i++) {
+            if (invalidRowIndices.has(i)) {
+              skippedCount++;
+              errorCount++;
+              continue;
+            }
             updateProgress(i + 1, `معالجة السجل (${i + 1} / ${totalRows})`);
             insertedCount++;
           }

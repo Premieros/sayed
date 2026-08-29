@@ -17,8 +17,10 @@ import * as api from '@/api';
 import { formatDate } from '@/lib/format';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
+import { isAdminRole } from '@/lib/permissions';
 import { Button } from '@/components/Button';
 import { useToast } from '@/components/Toast';
+import { APP_ROUTES } from '@/core/navigation/routes';
 import {
   SubscriptionService,
   type Plan,
@@ -195,6 +197,28 @@ export function SubscriptionPage() {
     return (
       <div className="min-h-[400px] flex items-center justify-center">
         <Loader2 className="w-8 h-8 animate-spin text-ui-primary" />
+      </div>
+    );
+  }
+
+  const isOwner = isAdminRole(user?.role);
+  if (!isOwner) {
+    return (
+      <div className="max-w-xl mx-auto my-12 p-8 bg-ui-card border border-ui-border rounded-2xl shadow-sm text-center">
+        <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-600 dark:text-amber-400">
+          <ShieldAlert className="w-8 h-8" />
+        </div>
+        <h2 className="text-xl font-bold text-ui-text mb-2">
+          {isAr ? 'صفحة مخصصة لمالك المنشأة فقط' : 'Owner Access Only'}
+        </h2>
+        <p className="text-sm text-ui-text-muted leading-relaxed mb-6 max-w-md mx-auto">
+          {isAr
+            ? 'عذراً، إدارة وتجديد اشتراكات المنشأة متاحة حصرياً لمالك الحساب والمدير العام.'
+            : 'Subscription management and billing are restricted to the account owner and super administrator.'}
+        </p>
+        <Button onClick={() => window.location.href = APP_ROUTES.dashboard}>
+          {isAr ? 'العودة للرئيسية' : 'Return to Dashboard'}
+        </Button>
       </div>
     );
   }

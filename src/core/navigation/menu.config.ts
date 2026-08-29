@@ -8,7 +8,16 @@ export type MenuIcon =
   | 'inventoryLedger' | 'stockCounts' | 'inventoryBatches' | 'stockValuation'   | 'lowStockAlerts' | 'inventoryUnits' | 'wasteCenter' | 'kitchenDisplay' | 'kitchenStations' | 'costingCenter' | 'branches' | 'purchases' | 'customers' | 'suppliers' | 'expenses'
   | 'accounts' | 'payments' | 'journal' | 'treasury' | 'reconciliation' | 'financialReports' | 'sales' | 'shifts' | 'reports' | 'users' | 'subscriptionsAdmin' | 'auditLog' | 'settings' | 'superAdmin' | 'importExport';
 
-export interface MenuItemConfig { id: string; route: AppRoute; icon: MenuIcon; labelKey: TranslationKey; permission?: Permission; group: MenuGroup; superAdminOnly?: boolean; }
+export interface MenuItemConfig {
+  id: string;
+  route: AppRoute;
+  icon: MenuIcon;
+  labelKey: TranslationKey;
+  permission?: Permission;
+  group: MenuGroup;
+  superAdminOnly?: boolean;
+  ownerOnly?: boolean;
+}
 
 export const MENU_GROUPS: Record<MenuGroup, { ar: string; en: string }> = {
   main: { ar: 'الرئيسية', en: 'Main' },
@@ -24,7 +33,7 @@ export const MENU_GROUPS: Record<MenuGroup, { ar: string; en: string }> = {
 export const MENU_ITEMS: MenuItemConfig[] = [
   { id: 'dashboard', route: APP_ROUTES.dashboard, icon: 'dashboard', labelKey: 'dashboard', permission: 'dashboard.view', group: 'main' },
   { id: 'pos', route: APP_ROUTES.pos, icon: 'pos', labelKey: 'pos', permission: 'pos.sell', group: 'main' },
-  { id: 'subscription', route: APP_ROUTES.subscription, icon: 'subscription', labelKey: 'mySubscription', group: 'main' },
+  { id: 'subscription', route: APP_ROUTES.subscription, icon: 'subscription', labelKey: 'mySubscription', group: 'main', ownerOnly: true },
   { id: 'operations-center', route: APP_ROUTES.operationsCenter, icon: 'pos', labelKey: 'orders', permission: 'dashboard.view', group: 'centers' },
   { id: 'inventory-center', route: APP_ROUTES.inventoryCenter, icon: 'inventory', labelKey: 'inventory', permission: 'inventory.view', group: 'centers' },
   { id: 'procurement-center', route: APP_ROUTES.procurementCenter, icon: 'purchases', labelKey: 'purchases', permission: 'purchases.view', group: 'centers' },

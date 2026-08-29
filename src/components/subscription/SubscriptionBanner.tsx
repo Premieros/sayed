@@ -2,10 +2,14 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AlertCircle, Clock, ArrowLeft, ShieldAlert } from 'lucide-react';
 import { APP_ROUTES } from '@/core/navigation/routes';
+import { useAuth } from '@/context/AuthContext';
+import { isAdminRole } from '@/lib/permissions';
 import { useSubscription } from '../../hooks/useSubscription';
 
 export const SubscriptionBanner: React.FC = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const isOwner = isAdminRole(user?.role);
   const { isTrial, isExpired, isSuspended, trialDaysRemaining, periodDaysRemaining, status } =
     useSubscription();
 
@@ -40,14 +44,16 @@ export const SubscriptionBanner: React.FC = () => {
             انتهت فترة اشتراك المنشأة. الميزات الحصرية مقفولة حالياً حتى يتم التجديد.
           </span>
         </div>
-        <button
-          id="btn-banner-renew"
-          onClick={() => navigate(APP_ROUTES.subscription)}
-          className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-600 text-white text-xs font-semibold rounded-lg hover:bg-amber-700 transition-colors shadow-sm"
-        >
-          <span>تجديد الاشتراك</span>
-          <ArrowLeft className="w-3.5 h-3.5" />
-        </button>
+        {isOwner && (
+          <button
+            id="btn-banner-renew"
+            onClick={() => navigate(APP_ROUTES.subscription)}
+            className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-600 text-white text-xs font-semibold rounded-lg hover:bg-amber-700 transition-colors shadow-sm"
+          >
+            <span>تجديد الاشتراك</span>
+            <ArrowLeft className="w-3.5 h-3.5" />
+          </button>
+        )}
       </div>
     );
   }
@@ -64,14 +70,16 @@ export const SubscriptionBanner: React.FC = () => {
             أنت في الفترة التجريبية المجانية (متبقي {trialDaysRemaining} يوم).
           </span>
         </div>
-        <button
-          id="btn-banner-choose-plan"
-          onClick={() => navigate(APP_ROUTES.subscription)}
-          className="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-600 text-white text-xs font-medium rounded-md hover:bg-blue-700 transition-colors"
-        >
-          <span>اختيار خطة</span>
-          <ArrowLeft className="w-3 h-3" />
-        </button>
+        {isOwner && (
+          <button
+            id="btn-banner-choose-plan"
+            onClick={() => navigate(APP_ROUTES.subscription)}
+            className="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-600 text-white text-xs font-medium rounded-md hover:bg-blue-700 transition-colors"
+          >
+            <span>اختيار خطة</span>
+            <ArrowLeft className="w-3 h-3" />
+          </button>
+        )}
       </div>
     );
   }
@@ -88,14 +96,16 @@ export const SubscriptionBanner: React.FC = () => {
             سينتهي اشتراكك الحالي خلال {periodDaysRemaining} أيام. يرجى التجديد لتجنب انقطاع الخدمة.
           </span>
         </div>
-        <button
-          id="btn-banner-renew-expiring"
-          onClick={() => navigate(APP_ROUTES.subscription)}
-          className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-600 text-white text-xs font-medium rounded-md hover:bg-amber-700 transition-colors"
-        >
-          <span>تجديد الآن</span>
-          <ArrowLeft className="w-3 h-3" />
-        </button>
+        {isOwner && (
+          <button
+            id="btn-banner-renew-expiring"
+            onClick={() => navigate(APP_ROUTES.subscription)}
+            className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-600 text-white text-xs font-medium rounded-md hover:bg-amber-700 transition-colors"
+          >
+            <span>تجديد الآن</span>
+            <ArrowLeft className="w-3 h-3" />
+          </button>
+        )}
       </div>
     );
   }
