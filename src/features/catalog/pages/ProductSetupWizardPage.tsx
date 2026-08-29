@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Check, ChevronLeft, ChevronRight, PackagePlus, Plus, Trash2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/api';
@@ -12,6 +12,7 @@ import { useBranches } from '@/hooks/useBranches';
 import { useCan } from '@/lib/permissions';
 import { generateBarcode } from '@/lib/format';
 import { logAudit } from '@/lib/audit';
+import { useGuidedWorkflow } from '@/core/guard';
 import type { Category, Product, InventoryUnit } from '@/lib/types';
 
 type SetupUnit = { id: string; mode: 'existing' | 'new'; name: string; code: string; unit_type: 'ready' | 'manufactured'; quantity: number; cost_price: number; sale_price: number; recipe: { raw_material_id: string; quantity: number; wastage_percent: number }[] };
@@ -21,6 +22,7 @@ const emptyUnit = (): SetupUnit => ({ id: '', mode: 'new', name: '', code: '', u
 export function ProductSetupWizardPage() {
   const navigate = useNavigate();
   const { t, lang } = useLanguage(); const { show } = useToast(); const branchFilter = useBranchFilter(); const { branches } = useBranches(); const can = useCan();
+  const { guidedContext, completePrerequisiteAndReturn } = useGuidedWorkflow();
   const isAr = lang === 'ar'; const [step, setStep] = useState(1); const [saving, setSaving] = useState(false);
   const [categories, setCategories] = useState<Category[]>([]); const [existingUnits, setExistingUnits] = useState<InventoryUnit[]>([]); const [rawMaterials, setRawMaterials] = useState<RawMaterial[]>([]);
   const [form, setForm] = useState({ name: '', name_en: '', barcode: generateBarcode(), sku: '', category_id: '', branch_id: branchFilter || '', cost_price: 0, sale_price: 0, wholesale_price: 0, is_active: true });
@@ -71,7 +73,13 @@ export function ProductSetupWizardPage() {
       }
       await logAudit('create', 'products', productId, { name: form.name, unit_count: totalUnitCount, product_type: derivedProductType });
       show(t('saveSuccess'), 'success');
-      navigate('/products');
+      if (guidedContext?.missingStep.key.includes('product')) {
+        setTimeout(() => {
+          completePrerequisiteAndReturn();
+        }, 500);
+      } else {
+        navigate('/products');
+      }
     } catch (e) { show(e instanceof Error ? e.message : String(e), 'error'); } finally { setSaving(false); }
   };
 

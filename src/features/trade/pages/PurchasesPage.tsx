@@ -1,6 +1,6 @@
-﻿import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { Plus, Trash2, Eye, Download, Send, Check, X, PackageOpen } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { supabase } from '@/api';
 import * as api from '@/api';
 import { useLanguage } from '@/context/LanguageContext';
@@ -19,6 +19,7 @@ import { useCan } from '@/lib/permissions';
 import { useSettings } from '@/context/SettingsContext';
 import { useBranches } from '@/hooks/useBranches';
 import { usePaginatedRows } from '@/hooks/usePaginatedRows';
+import { useOperationalGuard, PrerequisiteAlertBanner, PREREQUISITE_STEPS } from '@/core/guard';
 import type { Purchase, Supplier, Product, Warehouse, RpcResult, RawMaterial } from '@/lib/types';
 
 interface PurchaseFormItem {
@@ -48,6 +49,12 @@ export function PurchasesPage() {
   });
   const { effectiveSettings } = useSettings();
   const { branches } = useBranches();
+  const location = useLocation();
+  const {
+    guardPurchase,
+    interceptDbError,
+    startGuidance,
+  } = useOperationalGuard();
   const currency = effectiveSettings(branchFilter)?.currency || 'EGP';
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -81,12 +88,37 @@ export function PurchasesPage() {
   }
   useEffect(() => { loadMeta(); }, []);
 
+  // Restore draft if returning from guided prerequisite setup
+  useEffect(() => {
+    const state = location.state as { restoredDraft?: { form?: typeof form; lineItems?: PurchaseFormItem[] }; fromGuidance?: boolean } | null;
+    if (state?.fromGuidance && state?.restoredDraft) {
+      if (state.restoredDraft.form) setForm((prev) => ({ ...prev, ...state.restoredDraft?.form }));
+      if (state.restoredDraft.lineItems) setLineItems(state.restoredDraft.lineItems);
+      setModalOpen(true);
+    }
+  }, [location.state]);
+
   const filtered = items.filter((p) => !search || p.invoice_number.toLowerCase().includes(search.toLowerCase()) || (p as Purchase & { supplier?: Supplier }).supplier?.name.toLowerCase().includes(search.toLowerCase()));
 
   const subtotal = useMemo(() => lineItems.reduce((s, i) => s + i.quantity * i.unit_cost, 0), [lineItems]);
 
   const openAdd = () => {
-    setForm({ supplier_id: '', warehouse_id: '', branch_id: user?.branch_id || '', payment_method: 'cash', notes: '' });
+    const allowed = guardPurchase({
+      warehousesCount: warehouses.length,
+      suppliersCount: suppliers.length,
+      productsCount: products.length,
+      rawMaterialsCount: rawMaterials.length,
+      formData: { form, lineItems },
+    });
+    if (!allowed) return;
+
+    setForm({
+      supplier_id: suppliers[0]?.id || '',
+      warehouse_id: warehouses[0]?.id || '',
+      branch_id: user?.branch_id || branches[0]?.id || '',
+      payment_method: 'cash',
+      notes: '',
+    });
     setLineItems([{ ...EMPTY_LINE }]);
     setModalOpen(true);
   };
@@ -101,6 +133,15 @@ export function PurchasesPage() {
   };
 
   const save = async () => {
+    const allowed = guardPurchase({
+      warehousesCount: warehouses.length,
+      suppliersCount: suppliers.length,
+      productsCount: products.length,
+      rawMaterialsCount: rawMaterials.length,
+      formData: { form, lineItems },
+    });
+    if (!allowed) return;
+
     const validItems = lineItems.filter((l) => (l.line_type === 'product' ? l.product_id : l.raw_material_id) && l.quantity > 0);
     if (!form.supplier_id) { show(t('required') + ': ' + t('supplier'), 'error'); return; }
     if (validItems.length === 0) { show(t('required') + ': ' + t('addProduct'), 'error'); return; }
@@ -109,7 +150,10 @@ export function PurchasesPage() {
 
     const { data: serialRes, error: serialError } = await api.trade.nextDocumentNumber({ p_type: 'purchase' });
     if (serialError || !serialRes?.success) {
-      show(serialError?.message || (serialRes as { detail?: string } | null)?.detail || t('error'), 'error');
+      const handled = interceptDbError(serialError, 'purchase_create', 'تسجيل مشتريات', 'Create Purchase Invoice', { form, lineItems });
+      if (!handled) {
+        show(serialError?.message || (serialRes as { detail?: string } | null)?.detail || t('error'), 'error');
+      }
       return;
     }
     const invoiceNumber = (serialRes as { number?: string }).number || generateInvoiceNumber('PUR');
@@ -135,9 +179,21 @@ export function PurchasesPage() {
         unit_cost: i.unit_cost,
       })),
     });
-    if (error) { show(error.message, 'error'); return; }
+    if (error) {
+      const handled = interceptDbError(error, 'purchase_create', 'تسجيل مشتريات', 'Create Purchase Invoice', { form, lineItems });
+      if (!handled) {
+        show(error.message, 'error');
+      }
+      return;
+    }
     const result = data as RpcResult | null;
-    if (!result?.success) { show(result?.detail || result?.error || t('error'), 'error'); return; }
+    if (!result?.success) {
+      const handled = interceptDbError(result?.detail || result?.error, 'purchase_create', 'تسجيل مشتريات', 'Create Purchase Invoice', { form, lineItems });
+      if (!handled) {
+        show(result?.detail || result?.error || t('error'), 'error');
+      }
+      return;
+    }
 
     await logAudit('create', 'purchases', result.purchase_id || '', { invoice: invoiceNumber, total });
     show(t('saveSuccess'), 'success');
@@ -202,6 +258,39 @@ export function PurchasesPage() {
           )}
         </>
       } />
+
+      {warehouses.length === 0 && !loading && (
+        <PrerequisiteAlertBanner
+          step={PREREQUISITE_STEPS.create_warehouse}
+          onAction={() =>
+            startGuidance(
+              PREREQUISITE_STEPS.create_warehouse,
+              'purchase_create',
+              location.pathname,
+              { form, lineItems },
+              'تسجيل مشتريات',
+              'Purchase Invoices'
+            )
+          }
+        />
+      )}
+
+      {suppliers.length === 0 && !loading && (
+        <PrerequisiteAlertBanner
+          step={PREREQUISITE_STEPS.create_supplier}
+          onAction={() =>
+            startGuidance(
+              PREREQUISITE_STEPS.create_supplier,
+              'purchase_create',
+              location.pathname,
+              { form, lineItems },
+              'تسجيل مشتريات',
+              'Purchase Invoices'
+            )
+          }
+        />
+      )}
+
       <DesignPanel testId="purchases-search-panel">
         <DesignSearch value={search} onChange={setSearch} label={t('search')} placeholder={t('search')} testId="purchases-search" />
       </DesignPanel>

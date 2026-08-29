@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Factory, PackageCheck, Play, RefreshCw } from 'lucide-react';
 import * as api from '@/api';
 import { supabase } from '@/api';
@@ -12,6 +13,7 @@ import { Button } from '@/components/Button';
 import { Input, Select } from '@/components/Input';
 import { formatNumber } from '@/lib/format';
 import { logAudit } from '@/lib/audit';
+import { useOperationalGuard, PrerequisiteAlertBanner, PREREQUISITE_STEPS } from '@/core/guard';
 import type { InventoryUnit, Warehouse } from '@/lib/types';
 
 type RecipeRow = { raw_material_id: string; quantity: number; wastage_percent: number; raw_material?: { name: string } | null };
@@ -30,7 +32,14 @@ export function UnitProductionPage() {
   const { user } = useAuth();
   const branchFilter = useBranchFilter();
   const can = useCan();
+  const location = useLocation();
   const isAr = lang === 'ar';
+  const {
+    guardProduction,
+    interceptDbError,
+    startGuidance,
+  } = useOperationalGuard();
+
   const [units, setUnits] = useState<InventoryUnit[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [recipes, setRecipes] = useState<RecipeRow[]>([]);
@@ -60,6 +69,16 @@ export function UnitProductionPage() {
 
   useEffect(() => { void loadMeta(); }, [loadMeta]);
 
+  // Restore draft if returning from guided prerequisite setup
+  useEffect(() => {
+    const state = location.state as { restoredDraft?: { unitId?: string; warehouseId?: string; quantity?: number }; fromGuidance?: boolean } | null;
+    if (state?.fromGuidance && state?.restoredDraft) {
+      if (state.restoredDraft.unitId) setUnitId(state.restoredDraft.unitId);
+      if (state.restoredDraft.warehouseId) setWarehouseId(state.restoredDraft.warehouseId);
+      if (state.restoredDraft.quantity) setQuantity(state.restoredDraft.quantity);
+    }
+  }, [location.state]);
+
   const selectedUnit = useMemo(() => units.find((u) => u.id === unitId) || null, [units, unitId]);
 
   const loadRecipe = useCallback(async (id: string) => {
@@ -81,7 +100,17 @@ export function UnitProductionPage() {
   useEffect(() => { void loadRecipe(unitId); }, [loadRecipe, unitId]);
 
   const produce = async () => {
-    if (!can('production.manage')) return;
+    if (!can('production.manage')) {
+      show(isAr ? 'ليس لديك صلاحية لإدارة الإنتاج' : 'No permission for production management', 'error');
+      return;
+    }
+    const allowed = guardProduction({
+      warehousesCount: warehouses.length,
+      recipesCount: recipes.length,
+      formData: { unitId, warehouseId, quantity },
+    });
+    if (!allowed) return;
+
     if (!unitId || !warehouseId || quantity <= 0) {
       show(isAr ? 'اختر الوحدة والمخزن والكمية' : 'Select unit, warehouse and quantity', 'error');
       return;
@@ -97,7 +126,10 @@ export function UnitProductionPage() {
       show(isAr ? 'تم تصنيع الوحدة وتحديث المخزون' : 'Unit produced and inventory updated', 'success');
       await loadMeta();
     } catch (e) {
-      show(e instanceof Error ? e.message : String(e), 'error');
+      const handled = interceptDbError(e, 'production_create', 'أمر تصنيع وحدة', 'Manufacture Unit', { unitId, warehouseId, quantity });
+      if (!handled) {
+        show(e instanceof Error ? e.message : String(e), 'error');
+      }
     } finally {
       setLoading(false);
     }
@@ -110,6 +142,38 @@ export function UnitProductionPage() {
         subtitle={isAr ? 'الخامات → Recipe الوحدة → تصنيع الوحدة → مخزون الوحدة' : 'Raw materials → unit recipe → production → unit inventory'}
         actions={<Button variant="outline" size="sm" onClick={() => void loadMeta()} disabled={metaLoading}><RefreshCw className="w-4 h-4" /> {isAr ? 'تحديث' : 'Refresh'}</Button>}
       />
+
+      {warehouses.length === 0 && !metaLoading && (
+        <PrerequisiteAlertBanner
+          step={PREREQUISITE_STEPS.create_warehouse}
+          onAction={() =>
+            startGuidance(
+              PREREQUISITE_STEPS.create_warehouse,
+              'production_create',
+              location.pathname,
+              { unitId, warehouseId, quantity },
+              'إنتاج الوحدات',
+              'Unit Production'
+            )
+          }
+        />
+      )}
+
+      {units.length === 0 && !metaLoading && (
+        <PrerequisiteAlertBanner
+          step={PREREQUISITE_STEPS.create_unit}
+          onAction={() =>
+            startGuidance(
+              PREREQUISITE_STEPS.create_unit,
+              'production_create',
+              location.pathname,
+              { unitId, warehouseId, quantity },
+              'إنتاج الوحدات',
+              'Unit Production'
+            )
+          }
+        />
+      )}
 
       <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
         <DesignPanel>

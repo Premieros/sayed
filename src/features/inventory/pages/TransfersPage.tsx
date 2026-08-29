@@ -1,4 +1,5 @@
-﻿import { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Plus, CheckCircle2, XCircle, ArrowLeftRight, Trash2 } from 'lucide-react';
 import { supabase } from '@/api';
 import * as api from '@/api';
@@ -15,6 +16,7 @@ import { Modal } from '@/components/Modal';
 import { formatDateTime } from '@/lib/format';
 import { logAudit } from '@/lib/audit';
 import { usePaginatedRows } from '@/hooks/usePaginatedRows';
+import { useOperationalGuard, PrerequisiteAlertBanner, PREREQUISITE_STEPS } from '@/core/guard';
 import type { WarehouseTransfer, Warehouse, Product, Branch, RpcResult } from '@/lib/types';
 interface TransferLine {
   product_id: string;
@@ -30,6 +32,12 @@ export function TransfersPage() {
   const can = useCan();
   const { user } = useAuth();
   const branchFilter = useBranchFilter();
+  const location = useLocation();
+  const {
+    guardTransfer,
+    interceptDbError,
+    startGuidance,
+  } = useOperationalGuard();
 
   const { rows: transfers, loading, error, total, hasMore, loadMore, loadingMore, refresh: reloadTransfers } = usePaginatedRows<WarehouseTransfer>({
     table: 'warehouse_transfers',
@@ -63,6 +71,16 @@ export function TransfersPage() {
   }
   useEffect(() => { loadMeta(); }, []);
 
+  // Restore draft if returning from guided prerequisite setup
+  useEffect(() => {
+    const state = location.state as { restoredDraft?: { form?: typeof form; lines?: TransferLine[] }; fromGuidance?: boolean } | null;
+    if (state?.fromGuidance && state?.restoredDraft) {
+      if (state.restoredDraft.form) setForm((prev) => ({ ...prev, ...state.restoredDraft?.form }));
+      if (state.restoredDraft.lines) setLines(state.restoredDraft.lines);
+      setModalOpen(true);
+    }
+  }, [location.state]);
+
   const filtered = transfers.filter((tr) => {
     if (branchFilter && tr.branch_id !== branchFilter) return false;
     if (!search) return true;
@@ -72,7 +90,19 @@ export function TransfersPage() {
   });
 
   const openAdd = () => {
-    setForm({ from_warehouse_id: '', to_warehouse_id: '', branch_id: user?.branch_id || branchFilter || '', reason: '', notes: '' });
+    const allowed = guardTransfer({
+      warehousesCount: warehouses.length,
+      formData: { form, lines },
+    });
+    if (!allowed) return;
+
+    setForm({
+      from_warehouse_id: warehouses[0]?.id || '',
+      to_warehouse_id: warehouses[1]?.id || '',
+      branch_id: user?.branch_id || branchFilter || branches[0]?.id || '',
+      reason: '',
+      notes: '',
+    });
     setLines([{ ...EMPTY_LINE }]);
     setModalOpen(true);
   };
@@ -103,6 +133,12 @@ export function TransfersPage() {
   const removeLine = (idx: number) => setLines(lines.filter((_, i) => i !== idx));
 
   const createTransfer = async () => {
+    const allowed = guardTransfer({
+      warehousesCount: warehouses.length,
+      formData: { form, lines },
+    });
+    if (!allowed) return;
+
     if (!form.from_warehouse_id || !form.to_warehouse_id || form.from_warehouse_id === form.to_warehouse_id) {
       show(t('required') + ': ' + t('fromWarehouse'), 'error');
       return;
@@ -123,9 +159,17 @@ export function TransfersPage() {
       p_reason: form.reason || null,
       p_notes: form.notes || null,
     });
-    if (error) { show(error.message, 'error'); return; }
+    if (error) {
+      const handled = interceptDbError(error, 'transfer_create', 'التحويل المخزني', 'Warehouse Transfer', { form, lines });
+      if (!handled) show(error.message, 'error');
+      return;
+    }
     const result = data as RpcResult | null;
-    if (!result?.success) { show(result?.detail || result?.error || t('error'), 'error'); return; }
+    if (!result?.success) {
+      const handled = interceptDbError(result?.detail || result?.error, 'transfer_create', 'التحويل المخزني', 'Warehouse Transfer', { form, lines });
+      if (!handled) show(result?.detail || result?.error || t('error'), 'error');
+      return;
+    }
     await logAudit('create', 'warehouse_transfers', result.transfer_id, { number: result.transfer_number });
     show(t('saveSuccess'), 'success');
     setModalOpen(false);
@@ -213,6 +257,22 @@ export function TransfersPage() {
           <Button size="sm" onClick={openAdd}><Plus className="w-4 h-4" /> {t('newTransfer')}</Button>
         ) : undefined
       } />
+
+      {warehouses.length < 2 && !loading && (
+        <PrerequisiteAlertBanner
+          step={PREREQUISITE_STEPS.create_second_warehouse}
+          onAction={() =>
+            startGuidance(
+              PREREQUISITE_STEPS.create_second_warehouse,
+              'transfer_create',
+              location.pathname,
+              { form, lines },
+              'التحويل المخزني',
+              'Warehouse Transfers'
+            )
+          }
+        />
+      )}
 
       <DesignPanel testId="transfers-search-panel">
         <DesignSearch value={search} onChange={setSearch} label={t('search')} placeholder={t('search')} testId="transfers-search" />

@@ -1,4 +1,4 @@
-﻿import { useState } from 'react';
+import { useState } from 'react';
 import { Plus, Edit2, Trash2, Download, Trophy } from 'lucide-react';
 import { supabase } from '@/api';
 import * as api from '@/api';
@@ -21,6 +21,7 @@ import { useCan } from '@/lib/permissions';
 import { useSettings } from '@/context/SettingsContext';
 import { useBranches } from '@/hooks/useBranches';
 import { usePaginatedRows } from '@/hooks/usePaginatedRows';
+import { useGuidedWorkflow } from '@/core/guard';
 import type { Supplier, SupplierEvaluationRow } from '@/lib/types';
 
 export function SuppliersPage() {
@@ -28,6 +29,7 @@ export function SuppliersPage() {
   const { show } = useToast();
   const can = useCan();
   const branchFilter = useBranchFilter();
+  const { guidedContext, completePrerequisiteAndReturn } = useGuidedWorkflow();
   const { rows: items, loading, total, hasMore, loadMore, loadingMore, refresh: reloadSuppliers } = usePaginatedRows<Supplier>({
     table: 'suppliers',
     select: '*',
@@ -66,6 +68,12 @@ export function SuppliersPage() {
     show(t('saveSuccess'), 'success');
     setModalOpen(false);
     reloadSuppliers();
+
+    if (!editing && guidedContext?.missingStep.key.includes('supplier')) {
+      setTimeout(() => {
+        completePrerequisiteAndReturn();
+      }, 500);
+    }
   };
 
   const remove = async () => {

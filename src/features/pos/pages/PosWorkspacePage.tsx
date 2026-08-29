@@ -11,6 +11,7 @@ import { Logo } from '@/components/Logo';
 import { formatCurrency } from '@/lib/format';
 import { mergeEffectiveSettings, useSettings } from '@/context/SettingsContext';
 import { useToast } from '@/components/Toast';
+import { useOperationalGuard, PrerequisiteAlertBanner, PREREQUISITE_STEPS } from '@/core/guard';
 import type { Product, Customer, Settings, Branch, Category, ProductComponent, RpcResult, Order, CartItem, DiningArea } from '@/lib/types';
 import { usePosOrder } from '../hooks/usePosOrder';
 import { useActiveOrders } from '../hooks/useActiveOrders';
@@ -48,6 +49,10 @@ export function PosWorkspacePage() {
   const { branchSettingsMap } = useSettings();
   const { show } = useToast();
   const perms = usePosPermissions();
+  const {
+    guardPos,
+    startGuidance,
+  } = useOperationalGuard();
 
   const initState = useMemo<WorkspaceState>(() => (location.state || {}) as WorkspaceState, [location.state]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -175,11 +180,17 @@ export function PosWorkspacePage() {
 
   const handlePay = useCallback(() => {
     if (pos.cart.length === 0) return;
+    const allowed = guardPos({
+      productsCount: products.length,
+      activeShiftId: isCashier ? activeShift?.id || null : 'shift_exempt',
+      formData: { cart: pos.cart, orderType: pos.orderType },
+    });
+    if (!allowed) return;
     pos.setPaymentMethod('cash');
     pos.setPaidAmount(pos.total);
     pos.setCheckoutOpen(true);
     setMobileOrderOpen(false);
-  }, [pos]);
+  }, [pos, guardPos, products.length, isCashier, activeShift?.id]);
 
   // Keyboard Shortcuts Hook
   usePosKeyboard({
@@ -535,6 +546,24 @@ export function PosWorkspacePage() {
         }}
         onExit={() => navigate('/dashboard')}
       />
+
+      {products.length === 0 && !loading && (
+        <div className="p-3 bg-ui-surface border-b border-ui-border">
+          <PrerequisiteAlertBanner
+            step={PREREQUISITE_STEPS.create_product}
+            onAction={() =>
+              startGuidance(
+                PREREQUISITE_STEPS.create_product,
+                'pos_checkout',
+                location.pathname,
+                { cart: pos.cart, orderType: pos.orderType },
+                'شاشة نقطة البيع POS',
+                'POS Workspace'
+              )
+            }
+          />
+        </div>
+      )}
 
       <div className="flex-1 flex min-h-0">
         <ProductBrowser

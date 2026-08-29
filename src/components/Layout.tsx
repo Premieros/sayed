@@ -21,6 +21,7 @@ import { MENU_GROUPS, MENU_ITEMS, type MenuIcon, type MenuGroup } from '@/core/n
 import { CommandPalette, CommandPaletteTrigger } from './CommandPalette';
 import { SubscriptionBanner } from './subscription/SubscriptionBanner';
 import { OfflineStatusIndicator } from './OfflineStatusIndicator';
+import { ReturnContextBanner } from '@/core/guard/ReturnContextBanner';
 
 const ICONS: Record<MenuIcon, ReactNode> = {
   dashboard: <LayoutDashboard className="h-5 w-5" />,
@@ -314,6 +315,7 @@ export function Layout({ children }: { children: ReactNode }) {
       {/* ── Main content: offset for header (pt) + sidebar (ms/me) ── */}
       <div className={`pt-[64px] ${ar ? 'lg:ms-[260px]' : 'lg:me-[260px]'} min-h-screen`}>
         <SubscriptionBanner />
+        <ReturnContextBanner />
         <main data-testid="app-main" className="min-h-[calc(100vh-64px)] bg-ui-page p-4 sm:p-6 lg:p-7">
           <div data-testid="design-content-surface" className="mx-auto min-h-[calc(100vh-64px)] w-full max-w-[1600px] space-y-5">
             {children}

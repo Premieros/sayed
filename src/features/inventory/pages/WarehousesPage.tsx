@@ -1,4 +1,4 @@
-﻿import { useState } from 'react';
+import { useState } from 'react';
 import { Plus, Edit2, Trash2 } from 'lucide-react';
 import { supabase } from '@/api';
 import { useLanguage } from '@/context/LanguageContext';
@@ -16,6 +16,7 @@ import { useBranchFilter } from '@/lib/useBranchFilter';
 import { useCan } from '@/lib/permissions';
 import { useBranches } from '@/hooks/useBranches';
 import { usePaginatedRows } from '@/hooks/usePaginatedRows';
+import { useGuidedWorkflow } from '@/core/guard';
 import type { Warehouse, Branch } from '@/lib/types';
 
 export function WarehousesPage() {
@@ -23,6 +24,7 @@ export function WarehousesPage() {
   const { show } = useToast();
   const can = useCan();
   const branchFilter = useBranchFilter();
+  const { guidedContext, completePrerequisiteAndReturn } = useGuidedWorkflow();
   const { rows: items, loading, total, hasMore, loadMore, loadingMore, refresh: reloadWarehouses } = usePaginatedRows<Warehouse>({
     table: 'warehouses',
     select: '*, branch:branches(*)',
@@ -54,6 +56,12 @@ export function WarehousesPage() {
     show(t('saveSuccess'), 'success');
     setModalOpen(false);
     reloadWarehouses();
+
+    if (!editing && guidedContext?.missingStep.key.includes('warehouse')) {
+      setTimeout(() => {
+        completePrerequisiteAndReturn();
+      }, 500);
+    }
   };
 
   const remove = async () => {
