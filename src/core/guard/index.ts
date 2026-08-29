@@ -1,5 +1,7 @@
 export * from './types';
 export * from './prerequisitesRegistry';
+export * from './guidedWorkflowContextDef';
+export * from './useGuidedWorkflow';
 export * from './GuidedWorkflowContext';
 export * from './PrerequisiteModal';
 export * from './ReturnContextBanner';

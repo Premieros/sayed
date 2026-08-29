@@ -1,6 +1,4 @@
 import {
-  createContext,
-  useContext,
   useState,
   useEffect,
   useCallback,
@@ -15,6 +13,8 @@ import {
   validateActionPrerequisites,
   interpretDbError,
 } from './prerequisitesRegistry';
+import { GuidedWorkflowContext } from './guidedWorkflowContextDef';
+import type { GuidedWorkflowContextValue } from './guidedWorkflowContextDef';
 import type {
   OperationalActionKey,
   PrerequisiteStep,
@@ -23,50 +23,6 @@ import type {
 } from './types';
 
 const STORAGE_KEY = 'premier_pos_guided_workflow';
-
-interface GuidedWorkflowContextValue {
-  guidedContext: GuidedContextState | null;
-  startGuidance: (
-    step: PrerequisiteStep,
-    sourceAction: OperationalActionKey,
-    sourceRoute: string,
-    draftData?: Record<string, unknown>,
-    sourceLabelAr?: string,
-    sourceLabelEn?: string
-  ) => void;
-  completePrerequisiteAndReturn: (options?: { customMessageAr?: string; customMessageEn?: string }) => void;
-  cancelGuidance: () => void;
-  validateAndProceed: (
-    action: OperationalActionKey,
-    ctx: OperationalValidationContext,
-    sourceRoute: string,
-    sourceLabelAr: string,
-    sourceLabelEn: string,
-    draftData?: Record<string, unknown>
-  ) => boolean;
-  handleDbError: (
-    error: unknown,
-    fallbackAction: OperationalActionKey,
-    sourceRoute: string,
-    sourceLabelAr: string,
-    sourceLabelEn: string,
-    draftData?: Record<string, unknown>,
-    ctx?: OperationalValidationContext
-  ) => boolean;
-  getDraftData: <T = Record<string, unknown>>() => T | null;
-  clearDraftData: () => void;
-  openGuardModal: (
-    step: PrerequisiteStep,
-    actionKey: OperationalActionKey,
-    sourceRoute: string,
-    sourceLabelAr: string,
-    sourceLabelEn: string,
-    draftData?: Record<string, unknown>,
-    customReason?: string
-  ) => void;
-}
-
-const GuidedWorkflowContext = createContext<GuidedWorkflowContextValue | undefined>(undefined);
 
 export function GuidedWorkflowProvider({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
@@ -314,12 +270,4 @@ export function GuidedWorkflowProvider({ children }: { children: ReactNode }) {
       />
     </GuidedWorkflowContext.Provider>
   );
-}
-
-export function useGuidedWorkflow() {
-  const ctx = useContext(GuidedWorkflowContext);
-  if (!ctx) {
-    throw new Error('useGuidedWorkflow must be used within GuidedWorkflowProvider');
-  }
-  return ctx;
 }

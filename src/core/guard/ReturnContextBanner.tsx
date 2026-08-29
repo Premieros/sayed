@@ -1,6 +1,6 @@
 import { Sparkles, ArrowRight, ArrowLeft, X, CheckCircle2 } from 'lucide-react';
 import { useLanguage } from '@/context/LanguageContext';
-import { useGuidedWorkflow } from './GuidedWorkflowContext';
+import { useGuidedWorkflow } from './useGuidedWorkflow';
 import { Button } from '@/components/Button';
 
 export function ReturnContextBanner() {

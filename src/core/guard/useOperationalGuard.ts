@@ -3,7 +3,7 @@ import { useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { useCan } from '@/lib/permissions';
 import { useBranchFilter } from '@/lib/useBranchFilter';
-import { useGuidedWorkflow } from './GuidedWorkflowContext';
+import { useGuidedWorkflow } from './useGuidedWorkflow';
 import { PREREQUISITE_STEPS } from './prerequisitesRegistry';
 import type { OperationalActionKey, OperationalValidationContext } from './types';
 
