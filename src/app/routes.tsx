@@ -60,6 +60,7 @@ const SettingsControlCenterPage = lazy(() => import('../features/admin/pages/Set
 const SubscriptionsAdminPage = lazy(() => import('../features/admin/pages/SubscriptionsAdminPage').then(m => ({ default: m.SubscriptionsAdminPage })));
 const SuperAdminConsolePage = lazy(() => import('../features/admin/pages/SuperAdminConsolePage').then(m => ({ default: m.SuperAdminConsolePage })));
 const SystemHealthPage = lazy(() => import('../features/admin/pages/SystemHealthPage').then(m => ({ default: m.SystemHealthPage })));
+const ImportExportCenterPage = lazy(() => import('../features/import-export/pages/ImportExportCenterPage').then(m => ({ default: m.ImportExportCenterPage })));
 function PageLoader() { return <div className="min-h-screen flex items-center justify-center bg-ui-page"><div className="animate-spin rounded-full h-10 w-10 border-b-2 border-ui-primary" /></div>; }
 
 function ProtectedRoute({
@@ -186,6 +187,7 @@ export function AppRoutes() {
         <Route path={APP_ROUTES.superAdmin} element={<ProtectedRoute superAdminOnly><SuperAdminConsolePage /></ProtectedRoute>} />
         <Route path={APP_ROUTES.basicSettings} element={<ProtectedRoute permission="settings.manage"><Navigate to={APP_ROUTES.settings} replace /></ProtectedRoute>} />
         <Route path={APP_ROUTES.systemHealth} element={<ProtectedRoute permission="settings.manage"><SystemHealthPage /></ProtectedRoute>} />
+        <Route path={APP_ROUTES.importExport} element={<ProtectedRoute><ImportExportCenterPage /></ProtectedRoute>} />
         <Route path="*" element={<Navigate to={APP_ROUTES.dashboard} replace />} />
       </Routes>
     </Suspense>

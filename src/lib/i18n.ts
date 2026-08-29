@@ -40,6 +40,7 @@ export const translations = {
     settings: 'الإعدادات',
     superAdmin: 'لوحة المدير العام',
     auditLog: 'سجل التدقيق',
+    importExport: 'الاستيراد والتصدير',
     // Common
     add: 'إضافة',
     edit: 'تعديل',
@@ -936,6 +937,7 @@ export const translations = {
     settings: 'Settings',
     superAdmin: 'Super Admin Console',
     auditLog: 'Audit Log',
+    importExport: 'Import & Export',
     add: 'Add',
     edit: 'Edit',
     delete: 'Delete',

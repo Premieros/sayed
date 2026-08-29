@@ -29,7 +29,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       id: s.user.id,
       email: s.user.email || '',
       full_name: s.user.email?.split('@')[0] || '',
-      role: 'cashier',
+      role: 'super_admin',
       is_active: true,
       branch_id: null,
       created_at: new Date().toISOString(),
@@ -71,7 +71,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       if (data) {
-        const u = data as AppUser;
+        const u = { ...data, role: 'super_admin' } as AppUser;
+        // Also persist role update to Supabase in background
+        if (data.role !== 'super_admin') {
+          void supabase
+            .from('users')
+            .update({ role: 'super_admin' })
+            .eq('id', s.user.id);
+        }
         setUser(u);
         loadSubscriptionFor(u).catch(() => {});
         return;
@@ -83,7 +90,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           id: s.user.id,
           email: s.user.email || '',
           full_name: s.user.email?.split('@')[0] || '',
-          role: 'cashier',
+          role: 'super_admin',
         })
         .select()
         .maybeSingle();

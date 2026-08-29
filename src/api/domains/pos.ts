@@ -1,10 +1,54 @@
 import { supabase } from '@/lib/supabase';
 import type { ApiError, ApiResult, SaleItemInput } from '../types';
-import type { RpcResult, Shift, OrderType } from '@/lib/types';
+import type { RpcResult, Shift, OrderType, ProductComponent } from '@/lib/types';
 import { rpc } from '../rpc';
 
 export const pos = {
-  getActiveShift(p: { p_branch_id: string }): ApiResult<Shift> { return rpc('get_active_shift', p); },
+  async getActiveShift(p: { p_branch_id: string }): ApiResult<Shift> {
+    try {
+      const res = await rpc<Shift>('get_active_shift', p);
+      if (!res.error && res.data) {
+        return res;
+      }
+    } catch {
+      // Fallback below
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('shifts')
+        .select('*')
+        .eq('branch_id', p.p_branch_id)
+        .eq('status', 'open')
+        .order('opened_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (error) {
+        return { data: null, error: error as unknown as ApiError };
+      }
+
+      if (!data) {
+        return { data: null, error: null };
+      }
+
+      return {
+        data: {
+          open: true,
+          shift: {
+            id: data.id,
+            expected: Number(data.expected_amount) || Number(data.opening_amount) || 0,
+            opened_at: data.opened_at,
+            opening_amount: Number(data.opening_amount) || 0,
+          },
+        } as unknown as Shift,
+        error: null,
+      };
+    } catch (err) {
+      return { data: null, error: err as unknown as ApiError };
+    }
+  },
+
   sendToKitchen(p: { p_order_id: string; p_sent_by?: string | null }): ApiResult<RpcResult & { order_id?: string; sent?: unknown[]; items_sent_count?: number; all_sent?: boolean }> { return rpc('send_to_kitchen', p); },
   nextDocumentNumber(p: { p_type: string }): ApiResult<RpcResult> { return rpc('next_document_number', p); },
 
@@ -60,6 +104,8 @@ export const pos = {
         warehouseId = wh?.id || null;
       }
 
+      const timestamp = new Date().toISOString();
+
       // 2. Insert Sale record
       const { data: saleData, error: saleError } = await supabase
         .from('sales')
@@ -80,7 +126,7 @@ export const pos = {
           status: p.p_status || 'completed',
           order_type: p.p_order_type || 'takeaway',
           table_id: p.p_table_id || null,
-          created_at: new Date().toISOString(),
+          created_at: timestamp,
         })
         .select()
         .single();
@@ -102,24 +148,58 @@ export const pos = {
           discount_amount: it.discount_amount || 0,
           bonus_quantity: it.bonus_quantity || 0,
           total: it.total,
-          created_at: new Date().toISOString(),
+          created_at: timestamp,
         }));
 
         await supabase.from('sale_items').insert(itemRows);
 
-        // Process inventory & raw materials deduction for each item
+        // Fetch already-sent order items and quantities if this sale is for a dining/pos order, to strictly prevent double deduction
+        const sentQtyByProductId: Record<string, number> = {};
+        if (p.p_order_id) {
+          const { data: sentRows } = await supabase
+            .from('order_kitchen_sends')
+            .select('order_item_id')
+            .eq('order_id', p.p_order_id);
+
+          const sentItemIds = (sentRows || []).map((s: { order_item_id: string }) => s.order_item_id).filter(Boolean);
+          if (sentItemIds.length > 0) {
+            const { data: sentOrderItems } = await supabase
+              .from('order_items')
+              .select('id, product_id, quantity')
+              .in('id', sentItemIds);
+
+            for (const soi of (sentOrderItems || []) as { product_id: string; quantity: number }[]) {
+              if (soi.product_id) {
+                sentQtyByProductId[soi.product_id] = (sentQtyByProductId[soi.product_id] || 0) + (Number(soi.quantity) || 1);
+              }
+            }
+          }
+        }
+
+        // Process inventory, composite components & raw materials deduction for unsent items
         for (const it of p.p_items) {
           if (!it.product_id) continue;
-          const soldQty = (Number(it.quantity) || 0) + (Number(it.bonus_quantity) || 0);
+          
+          const totalSoldQty = (Number(it.quantity) || 0) + (Number(it.bonus_quantity) || 0);
+          const alreadySentQty = sentQtyByProductId[it.product_id] || 0;
+          const qtyToDeduct = Math.max(0, totalSoldQty - alreadySentQty);
+          
+          // Deduct from tracking accumulator
+          sentQtyByProductId[it.product_id] = Math.max(0, alreadySentQty - totalSoldQty);
 
-          // Check if product is manufactured or has a recipe
+          if (qtyToDeduct <= 0) {
+            // Already fully deducted at kitchen dispatch
+            continue;
+          }
+
+          // Check product information
           const { data: product } = await supabase
             .from('products')
-            .select('id, product_type')
+            .select('id, name, product_type')
             .eq('id', it.product_id)
             .maybeSingle();
 
-          // Check for recipe
+          // A. Check for recipe & raw materials (Manufacturing / Kitchen Recipe)
           const { data: recipe } = await supabase
             .from('recipes')
             .select('*, recipe_items(*, raw_material:raw_materials(*))')
@@ -128,12 +208,12 @@ export const pos = {
             .maybeSingle();
 
           if (recipe && recipe.recipe_items && Array.isArray(recipe.recipe_items) && recipe.recipe_items.length > 0) {
-            // Deduct raw materials ingredients
             const yieldQty = Number(recipe.yield_quantity) || 1;
-            const multiplier = soldQty / yieldQty;
+            const multiplier = qtyToDeduct / yieldQty;
 
             for (const rItem of recipe.recipe_items) {
-              const rDeduct = Number(rItem.quantity) * multiplier * (1 + (Number(rItem.wastage_percent) || 0) / 100);
+              const wastage = Number(rItem.wastage_percent) || 0;
+              const rDeduct = Number(rItem.quantity) * multiplier * (1 + wastage / 100);
 
               const { data: rmInv } = await supabase
                 .from('raw_material_inventory')
@@ -146,7 +226,7 @@ export const pos = {
                 const updatedQty = Math.max(0, Number(rmInv.quantity) - rDeduct);
                 await supabase
                   .from('raw_material_inventory')
-                  .update({ quantity: updatedQty, updated_at: new Date().toISOString() })
+                  .update({ quantity: updatedQty, updated_at: timestamp })
                   .eq('id', rmInv.id);
               }
 
@@ -157,65 +237,145 @@ export const pos = {
                   movement_type: 'pos_sale_consume',
                   quantity: -rDeduct,
                   reference_id: saleId,
-                  created_at: new Date().toISOString(),
+                  created_at: timestamp,
                 });
               } catch {
-                // Best effort
+                // Best effort logging
               }
             }
-          }
-
-          // Deduct from standard product inventory if tracked
-          if (warehouseId && product?.product_type !== 'service') {
-            const { data: inv } = await supabase
-              .from('inventory')
+          } else {
+            // B. Check composite product components
+            const { data: comps } = await supabase
+              .from('product_components')
               .select('*')
-              .eq('product_id', it.product_id)
-              .eq('warehouse_id', warehouseId)
-              .maybeSingle();
+              .eq('product_id', it.product_id);
 
-            if (inv) {
-              const newQty = Math.max(0, Number(inv.quantity) - soldQty);
-              await supabase
+            if (comps && comps.length > 0) {
+              for (const comp of comps as ProductComponent[]) {
+                const compDeduct = (Number(comp.quantity) || 0) * qtyToDeduct;
+                if (compDeduct > 0 && warehouseId) {
+                  const { data: cInv } = await supabase
+                    .from('inventory')
+                    .select('*')
+                    .eq('product_id', comp.component_product_id)
+                    .eq('warehouse_id', warehouseId)
+                    .maybeSingle();
+
+                  if (cInv) {
+                    const newQty = Math.max(0, Number(cInv.quantity) - compDeduct);
+                    await supabase
+                      .from('inventory')
+                      .update({ quantity: newQty, updated_at: timestamp })
+                      .eq('id', cInv.id);
+                  }
+
+                  try {
+                    await supabase.from('inventory_movements').insert({
+                      product_id: comp.component_product_id,
+                      warehouse_id: warehouseId,
+                      movement_type: 'pos_sale_consume',
+                      quantity: -compDeduct,
+                      reference_id: saleId,
+                      created_at: timestamp,
+                    });
+                  } catch {
+                    // Best effort
+                  }
+                }
+              }
+            } else if (warehouseId && product) {
+              // C. Direct standard product inventory deduction
+              const { data: inv } = await supabase
                 .from('inventory')
-                .update({ quantity: newQty, updated_at: new Date().toISOString() })
-                .eq('id', inv.id);
+                .select('*')
+                .eq('product_id', it.product_id)
+                .eq('warehouse_id', warehouseId)
+                .maybeSingle();
 
-              try {
-                await supabase.from('inventory_movements').insert({
-                  product_id: it.product_id,
-                  warehouse_id: warehouseId,
-                  movement_type: 'sale',
-                  quantity: -soldQty,
-                  reference_id: saleId,
-                  created_at: new Date().toISOString(),
-                });
-              } catch {
-                // Best effort
+              if (inv) {
+                const newQty = Math.max(0, Number(inv.quantity) - qtyToDeduct);
+                await supabase
+                  .from('inventory')
+                  .update({ quantity: newQty, updated_at: timestamp })
+                  .eq('id', inv.id);
+
+                try {
+                  await supabase.from('inventory_movements').insert({
+                    product_id: it.product_id,
+                    warehouse_id: warehouseId,
+                    movement_type: 'sale',
+                    quantity: -qtyToDeduct,
+                    reference_id: saleId,
+                    created_at: timestamp,
+                  });
+                } catch {
+                  // Best effort
+                }
               }
             }
           }
         }
       }
 
-      // 4. Update dining table status if occupied
+      // 4. Update customer balance if credit sale or customer attached
+      if (p.p_customer_id && p.p_total > 0) {
+        try {
+          const { data: cust } = await supabase
+            .from('customers')
+            .select('id, balance')
+            .eq('id', p.p_customer_id)
+            .maybeSingle();
+
+          if (cust) {
+            const unpaidAmount = Math.max(0, p.p_total - (p.p_paid_amount || 0));
+            if (unpaidAmount > 0) {
+              const newBalance = (Number(cust.balance) || 0) + unpaidAmount;
+              await supabase
+                .from('customers')
+                .update({ balance: newBalance, updated_at: timestamp })
+                .eq('id', p.p_customer_id);
+            }
+          }
+        } catch {
+          // Best effort
+        }
+      }
+
+      // 5. Insert payment record if payment was received
+      if (p.p_paid_amount > 0) {
+        try {
+          await supabase.from('payments').insert({
+            sale_id: saleId,
+            branch_id: p.p_branch_id,
+            customer_id: p.p_customer_id || null,
+            amount: p.p_paid_amount,
+            payment_method: p.p_payment_method,
+            status: 'completed',
+            created_at: timestamp,
+          });
+        } catch {
+          // Best effort
+        }
+      }
+
+      // 6. Update dining table status if occupied
       if (p.p_table_id) {
         try {
           await supabase
             .from('dining_tables')
-            .update({ status: 'vacant', updated_at: new Date().toISOString() })
+            .update({ status: 'vacant', updated_at: timestamp })
             .eq('id', p.p_table_id);
         } catch {
           // Best effort
         }
       }
 
-      // 5. Update order status if order_id was linked
+      // 7. Update order status if order_id was linked
       if (p.p_order_id) {
         try {
           await supabase
             .from('orders')
-            .update({ status: 'completed', updated_at: new Date().toISOString() })
+            .update({ status: 'completed', updated_at: timestamp })
             .eq('id', p.p_order_id);
         } catch {
           // Best effort
@@ -238,4 +398,5 @@ export const pos = {
     }
   },
 };
+
 

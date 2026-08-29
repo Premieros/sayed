@@ -6,7 +6,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/components/Toast';
 import { computePosTotals, computeLineDiscount, type PosPaymentMethod } from '@/lib/posMath';
 import { logAudit } from '@/lib/audit';
-import type { CartItem, Customer, DiningTable, OrderType, Product, ProductComponent, RpcResult, Settings } from '@/lib/types';
+import type { CartItem, Customer, DiningTable, Order, OrderItem, OrderType, Product, ProductComponent, RpcResult, Settings } from '@/lib/types';
 import { ORDER_TYPE_KEY } from '../utils/orderTypes';
 import { cartToItems, orderItemsToCart } from '../utils/cart';
 import { buildReceiptHtml, buildKitchenTicketHtml, openPrintWindow, type ReceiptData } from '../utils/printing';
@@ -297,6 +297,149 @@ export function usePosOrder(input: UsePosOrderInput) {
     await performDetach();
   }, [isAr, performDetach]);
 
+  // Seamlessly resume an existing table's order without losing any state or creating duplicates
+  const resumeTableOrder = useCallback((order: Order, items: OrderItem[], orderProducts: Product[], table: DiningTable) => {
+    setActiveOrderId(order.id);
+    setActiveOrderNumber(order.order_number);
+    setOrderType(order.order_type as OrderType);
+    setTableId(table.id);
+    setActiveTable(table);
+    setGuestCount(order.guest_count || null);
+    setOrderNotes(order.notes || '');
+    setCustomerId(order.customer_id || '');
+    const cartItems = orderItemsToCart(items, orderProducts);
+    setCart(cartItems);
+  }, []);
+
+  // Initialize a new order directly on a selected table
+  const startTableOrder = useCallback((table: DiningTable, guests = 2) => {
+    setCart(EMPTY_CART);
+    setActiveOrderId(null);
+    setActiveOrderNumber(null);
+    setOrderType('dine_in');
+    setTableId(table.id);
+    setActiveTable(table);
+    setGuestCount(guests || table.capacity || 2);
+    setOrderNotes('');
+    setDiscountAmount(0);
+    setPaidAmount(0);
+  }, []);
+
+  // Move / Transfer order between tables
+  const transferOrderToTable = useCallback(async (targetOrderId: string, fromTableId: string, toTableId: string): Promise<boolean> => {
+    try {
+      // Update order table_id
+      const { error: ordErr } = await supabase
+        .from('orders')
+        .update({ table_id: toTableId, updated_at: new Date().toISOString() })
+        .eq('id', targetOrderId);
+
+      if (ordErr) {
+        show(ordErr.message, 'error');
+        return false;
+      }
+
+      // Free old table
+      await supabase
+        .from('dining_tables')
+        .update({ status: 'vacant', updated_at: new Date().toISOString() })
+        .eq('id', fromTableId);
+
+      // Occupy target table
+      await supabase
+        .from('dining_tables')
+        .update({ status: 'occupied', updated_at: new Date().toISOString() })
+        .eq('id', toTableId);
+
+      // Fetch new table details
+      const { data: newTable } = await supabase
+        .from('dining_tables')
+        .select('*')
+        .eq('id', toTableId)
+        .maybeSingle();
+
+      if (activeOrderId === targetOrderId) {
+        setTableId(toTableId);
+        setActiveTable((newTable as DiningTable) || null);
+      }
+
+      show(isAr ? 'تم تحويل الطلب إلى الطاولة الجديدة بنجاح' : 'Order transferred successfully', 'success');
+      return true;
+    } catch (err) {
+      show(err instanceof Error ? err.message : 'Transfer failed', 'error');
+      return false;
+    }
+  }, [activeOrderId, isAr, show]);
+
+  // Void a previously sent item from kitchen with audit logging
+  const voidSentItem = useCallback(async (productId: string, voidQuantity: number, reason: string): Promise<boolean> => {
+    if (!activeOrderId) return false;
+    try {
+      // Find item in cart
+      const item = cart.find((i) => i.product.id === productId);
+      if (!item) return false;
+
+      // Deduct quantity or remove from cart
+      if (item.quantity <= voidQuantity) {
+        setCart((prev) => prev.filter((i) => i.product.id !== productId));
+      } else {
+        setCart((prev) =>
+          prev.map((i) => (i.product.id === productId ? { ...i, quantity: i.quantity - voidQuantity } : i))
+        );
+      }
+
+      // Fetch active branch warehouse to restore stock if ready item
+      const warehouseId = await fetchBranchWarehouseId(branchId);
+      const timestamp = new Date().toISOString();
+
+      if (warehouseId && item.product) {
+        const { data: inv } = await supabase
+          .from('inventory')
+          .select('*')
+          .eq('product_id', productId)
+          .eq('warehouse_id', warehouseId)
+          .maybeSingle();
+
+        if (inv) {
+          await supabase
+            .from('inventory')
+            .update({ quantity: Number(inv.quantity) + voidQuantity, updated_at: timestamp })
+            .eq('id', inv.id);
+
+          try {
+            await supabase.from('inventory_movements').insert({
+              product_id: productId,
+              warehouse_id: warehouseId,
+              movement_type: 'pos_void_restore',
+              quantity: voidQuantity,
+              reference_id: activeOrderId,
+              notes: `Void reason: ${reason}`,
+              created_at: timestamp,
+            });
+          } catch {
+            // best effort
+          }
+        }
+      }
+
+      // Append cancellation note to order notes
+      const cancelNote = `[إلغاء: ${voidQuantity} × ${item.product.name} - السبب: ${reason}]`;
+      const updatedNotes = orderNotes ? `${orderNotes}\n${cancelNote}` : cancelNote;
+      setOrderNotes(updatedNotes);
+
+      await supabase
+        .from('orders')
+        .update({ notes: updatedNotes, updated_at: timestamp })
+        .eq('id', activeOrderId);
+
+      show(isAr ? `تم إلغاء الصنف (${item.product.name}) بنجاح` : `Item voided successfully`, 'success');
+      return true;
+    } catch (err) {
+      show(err instanceof Error ? err.message : 'Failed to void item', 'error');
+      return false;
+    }
+  }, [activeOrderId, cart, branchId, orderNotes, isAr, show]);
+
   // Creates or updates the persisted order from the current cart.
   const persistCart = useCallback(async (status: 'open' | 'held'): Promise<PersistResult> => {
     if (!branchId) { show(t('selectBranchFirst'), 'error'); return { ok: false, orderId: null, orderNumber: null }; }
@@ -578,6 +721,7 @@ export function usePosOrder(input: UsePosOrderInput) {
     addToCart, updateQty, setQty, removeFromCart, clearCart, setItemDiscount,
     switchOrderType, holdOrder, sendToKitchen, printKitchenTicket, completeSale, printReceipt,
     detachTable, detachOrder, resetWorkspace,
+    resumeTableOrder, startTableOrder, transferOrderToTable, voidSentItem,
   };
 }
 

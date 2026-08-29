@@ -1,10 +1,12 @@
 {
-  "generated_at": "2026-08-25T17:50:12.988Z",
+  "generated_at": "2026-08-29T20:40:59.753Z",
   "source": "scripts/db/gen-contract.js (extracted from src/api/domains + src)",
   "rpcs": [
     {
       "name": "activate_subscription",
       "params": [
+        "activate",
+        "billing_period",
         "branch_id",
         "plan_id"
       ]
@@ -12,9 +14,15 @@
     {
       "name": "add_inventory_batch",
       "params": [
+        "batch_number",
         "branch_id",
+        "expiry_date",
+        "notes",
         "product_id",
+        "production_date",
         "quantity",
+        "source_type",
+        "unit_cost",
         "warehouse_id"
       ]
     },
@@ -31,7 +39,9 @@
     {
       "name": "add_stock_count_item",
       "params": [
+        "counted_quantity",
         "product_id",
+        "reason",
         "stock_count_id"
       ]
     },
@@ -124,12 +134,29 @@
       "name": "create_order",
       "params": [
         "branch_id",
-        "items"
+        "cashier_id",
+        "customer_id",
+        "discount_amount",
+        "discount_type",
+        "guest_count",
+        "items",
+        "notes",
+        "order_type",
+        "subtotal",
+        "table_id",
+        "tax_amount",
+        "total"
       ]
     },
     {
       "name": "create_organization_branch",
-      "params": []
+      "params": [
+        "address",
+        "name",
+        "name_en",
+        "organization_id",
+        "phone"
+      ]
     },
     {
       "name": "create_production_order",
@@ -147,19 +174,33 @@
       "name": "create_purchase_order",
       "params": [
         "branch_id",
-        "supplier_id"
+        "items",
+        "notes",
+        "payment_method",
+        "quotation_id",
+        "supplier_id",
+        "warehouse_id"
       ]
     },
     {
       "name": "create_purchase_request",
       "params": [
-        "branch_id"
+        "branch_id",
+        "expected_date",
+        "items",
+        "notes",
+        "priority",
+        "supplier_id"
       ]
     },
     {
       "name": "create_rfq",
       "params": [
-        "branch_id"
+        "branch_id",
+        "due_date",
+        "items",
+        "notes",
+        "request_id"
       ]
     },
     {
@@ -270,16 +311,23 @@
     {
       "name": "get_cost_history",
       "params": [
+        "limit",
         "product_id"
       ]
     },
     {
       "name": "get_costing_overview",
-      "params": []
+      "params": [
+        "branch_id"
+      ]
     },
     {
       "name": "get_expiring_batches",
-      "params": []
+      "params": [
+        "branch_id",
+        "horizon_days",
+        "warehouse_id"
+      ]
     },
     {
       "name": "get_general_ledger",
@@ -316,15 +364,25 @@
     },
     {
       "name": "get_low_stock_alerts",
-      "params": []
+      "params": [
+        "branch_id",
+        "warehouse_id"
+      ]
     },
     {
       "name": "get_low_stock_summary",
-      "params": []
+      "params": [
+        "branch_id",
+        "warehouse_id"
+      ]
     },
     {
       "name": "get_order_margin",
-      "params": []
+      "params": [
+        "branch_id",
+        "from",
+        "to"
+      ]
     },
     {
       "name": "get_party_statement",
@@ -339,16 +397,21 @@
     {
       "name": "get_product_costing_detail",
       "params": [
+        "branch_id",
         "product_id"
       ]
     },
     {
       "name": "get_purchase_backorders",
-      "params": []
+      "params": [
+        "branch_id"
+      ]
     },
     {
       "name": "get_purchase_receipts",
-      "params": []
+      "params": [
+        "branch_id"
+      ]
     },
     {
       "name": "get_rfq_comparison",
@@ -358,15 +421,23 @@
     },
     {
       "name": "get_stock_valuation",
-      "params": []
+      "params": [
+        "branch_id",
+        "warehouse_id"
+      ]
     },
     {
       "name": "get_stock_valuation_summary",
-      "params": []
+      "params": [
+        "branch_id",
+        "warehouse_id"
+      ]
     },
     {
       "name": "get_supplier_evaluation",
-      "params": []
+      "params": [
+        "branch_id"
+      ]
     },
     {
       "name": "get_supplier_price_impact",
@@ -468,14 +539,18 @@
         "customer_id",
         "discount_amount",
         "discount_type",
+        "guest_count",
         "invoice_number",
         "items",
+        "order_id",
+        "order_type",
         "paid_amount",
         "payment_method",
         "salesperson_id",
         "shift_id",
         "status",
         "subtotal",
+        "table_id",
         "tax_amount",
         "total",
         "warehouse_id"
@@ -542,18 +617,25 @@
     {
       "name": "record_supplier_quotation",
       "params": [
+        "delivery_days",
         "items",
+        "notes",
         "rfq_id",
-        "supplier_id"
+        "supplier_id",
+        "valid_until"
       ]
     },
     {
       "name": "register_tenant",
       "params": [
+        "address",
+        "currency",
         "email",
         "owner_name",
         "password",
-        "store_name"
+        "phone",
+        "store_name",
+        "store_name_en"
       ]
     },
     {
@@ -605,12 +687,14 @@
     {
       "name": "send_to_kitchen",
       "params": [
-        "order_id"
+        "order_id",
+        "sent_by"
       ]
     },
     {
       "name": "set_order_status",
       "params": [
+        "notes",
         "order_id",
         "status"
       ]
@@ -642,13 +726,31 @@
     },
     {
       "name": "update_branch",
-      "params": []
+      "params": [
+        "address",
+        "branch_id",
+        "is_active",
+        "name",
+        "name_en",
+        "phone"
+      ]
     },
     {
       "name": "update_order",
       "params": [
+        "customer_id",
+        "discount_amount",
+        "discount_type",
+        "guest_count",
         "items",
-        "order_id"
+        "notes",
+        "order_id",
+        "order_type",
+        "status",
+        "subtotal",
+        "table_id",
+        "tax_amount",
+        "total"
       ]
     },
     {
@@ -677,6 +779,7 @@
       "params": [
         "counted_quantity",
         "product_id",
+        "reason",
         "stock_count_id"
       ]
     },
@@ -691,6 +794,7 @@
   "tables": [
     "audit_log",
     "branch_settings",
+    "branch_subscriptions",
     "branches",
     "categories",
     "chart_of_accounts",
@@ -700,6 +804,7 @@
     "expenses",
     "inventory",
     "inventory_batches",
+    "inventory_movements",
     "inventory_unit_productions",
     "inventory_unit_recipes",
     "inventory_units",
@@ -710,9 +815,13 @@
     "orders",
     "organization_members",
     "organizations",
+    "plan_features",
+    "plan_prices",
+    "plans",
     "product_components",
     "product_unit_links",
     "product_units",
+    "production_waste",
     "products",
     "purchase_items",
     "purchase_request_items",
@@ -720,6 +829,7 @@
     "purchases",
     "raw_material_batches",
     "raw_material_inventory",
+    "raw_material_movements",
     "raw_materials",
     "recipe_items",
     "recipes",

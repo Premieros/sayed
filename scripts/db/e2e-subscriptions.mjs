@@ -47,7 +47,7 @@ function buildSsl(connectionString) {
 }
 
 const env = loadEnv(join(ROOT, '.env'));
-const dbUrl = env.SUPABASE_DB_URL || env.DATABASE_URL || env.POSTGRES_URL;
+const dbUrl = process.env.SUPABASE_DB_URL || process.env.DATABASE_URL || process.env.POSTGRES_URL || env.SUPABASE_DB_URL || env.DATABASE_URL || env.POSTGRES_URL;
 if (!dbUrl) {
   console.error('ERROR: no database URL found. Add SUPABASE_DB_URL (or DATABASE_URL) to .env.');
   process.exit(1);
@@ -126,11 +126,13 @@ async function run() {
   const adminId = '00000000-0000-0000-0000-0000000000ab';
   await client.query("SELECT set_config('app.register_branch','on',true)");
   await client.query(
-    "INSERT INTO public.users (id, email, username, role, branch_id, is_active) VALUES ($1,'e2e-admin@test.local','e2e_admin','super_admin',NULL,true)",
-    [adminId],
+    "INSERT INTO public.users (id, email, username, role, branch_id, is_active) VALUES ($1,'e2e-admin@test.local','e2e_admin','super_admin',$2,true)",
+    [adminId, bid],
   );
   await client.query("SELECT set_config('app.register_branch','off',true)");
-  await client.query("SELECT set_config('app.user_id', $1, true)", [adminId]);
+  await client.query("SELECT set_config('request.jwt.claim.sub', $1, true)", [adminId]);
+  await client.query("SELECT set_config('request.jwt.claims', $1, true)", [JSON.stringify({ sub: adminId, role: 'authenticated' })]);
+  await client.query("SELECT set_config('role', 'authenticated', true)");
 
   const act = await client.query('SELECT public.activate_subscription($1, $2, $3, $4) AS res', [bid, 'standard', 'monthly', true]);
   ok('activate_subscription succeeds', act.rows[0].res?.success === true, JSON.stringify(act.rows[0].res));

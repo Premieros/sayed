@@ -6,13 +6,15 @@ import * as api from '@/api';
 import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/context/AuthContext';
 import { useBranchFilter } from '@/lib/useBranchFilter';
+import { useOffline } from '@/context/OfflineContext';
+import { offlinePosManager } from '../services/offlinePos';
 import { Modal } from '@/components/Modal';
 import { Logo } from '@/components/Logo';
 import { formatCurrency } from '@/lib/format';
 import { mergeEffectiveSettings, useSettings } from '@/context/SettingsContext';
 import { useToast } from '@/components/Toast';
 import { useOperationalGuard, PrerequisiteAlertBanner, PREREQUISITE_STEPS } from '@/core/guard';
-import type { Product, Customer, Settings, Branch, Category, ProductComponent, RpcResult, Order, CartItem, DiningArea } from '@/lib/types';
+import type { Product, Customer, Settings, Branch, Category, ProductComponent, RpcResult, Order, CartItem, DiningArea, DiningTable } from '@/lib/types';
 import { usePosOrder } from '../hooks/usePosOrder';
 import { useActiveOrders } from '../hooks/useActiveOrders';
 import { usePosPermissions } from '../hooks/usePosPermissions';
@@ -30,6 +32,10 @@ import { TablesPanel } from '../components/tables/TablesPanel';
 import { KitchenPanel } from '../components/kitchen/KitchenPanel';
 import { CurrentOrderPanel } from '../components/order/CurrentOrderPanel';
 import { PaymentPanel } from '../components/checkout/PaymentPanel';
+import { PosTablesSidebar } from '../components/tables/PosTablesSidebar';
+import { PosOrderHeaderBar } from '../components/order/PosOrderHeaderBar';
+import { TransferOrderModal } from '../components/tables/TransferOrderModal';
+import { VoidItemModal } from '../components/order/VoidItemModal';
 
 interface WorkspaceState {
   tableId?: string | null;
@@ -55,6 +61,8 @@ export function PosWorkspacePage() {
   } = useOperationalGuard();
 
   const initState = useMemo<WorkspaceState>(() => (location.state || {}) as WorkspaceState, [location.state]);
+  const { cachePosData, loadCachedPosData } = useOffline();
+  const [reloadKey, setReloadKey] = useState(0);
   const [products, setProducts] = useState<Product[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [settings, setSettings] = useState<Settings | null>(null);
@@ -82,6 +90,13 @@ export function PosWorkspacePage() {
   const [customerModalOpen, setCustomerModalOpen] = useState(false);
   const [tableModalOpen, setTableModalOpen] = useState(false);
   const [shiftModalOpen, setShiftModalOpen] = useState(false);
+  const [tablesCollapsed, setTablesCollapsed] = useState(false);
+  const [transferModalOpen, setTransferModalOpen] = useState(false);
+  const [transferOrder, setTransferOrder] = useState<Order | null>(null);
+  const [transferSourceTable, setTransferSourceTable] = useState<DiningTable | null>(null);
+  const [voidModalOpen, setVoidModalOpen] = useState(false);
+  const [voidItem, setVoidItem] = useState<CartItem | null>(null);
+  const [voidSentQty, setVoidSentQty] = useState(1);
 
   const barcodeRef = useRef<HTMLInputElement>(null);
   const payConsumed = useRef(false);
@@ -177,6 +192,19 @@ export function PosWorkspacePage() {
   const productNames = useMemo(() => Object.fromEntries(products.map((p) => [p.id, isAr ? p.name : p.name_en || p.name])), [products, isAr]);
   const kitchenOrders = useMemo(() => orders.filter((o) => (kitchenSendsByOrder[o.id]?.length || 0) > 0).length, [orders, kitchenSendsByOrder]);
   const activeOrderCreatedAt = useMemo(() => orders.find((o) => o.id === pos.activeOrderId)?.created_at || null, [orders, pos.activeOrderId]);
+  const orderItemsForActive = useMemo(() => (pos.activeOrderId ? itemsByOrder[pos.activeOrderId] || [] : []), [pos.activeOrderId, itemsByOrder]);
+  const kitchenSendsForActive = useMemo(() => (pos.activeOrderId ? kitchenSendsByOrder[pos.activeOrderId] || [] : []), [pos.activeOrderId, kitchenSendsByOrder]);
+  const sentItemIds = useMemo(() => new Set(kitchenSendsForActive.map((s) => s.order_item_id)), [kitchenSendsForActive]);
+
+  const hasUnsentItems = useMemo(() => {
+    if (pos.cart.length === 0) return false;
+    if (kitchenSendsForActive.length === 0) return true;
+    return pos.cart.some((cItem) => {
+      const orderItem = orderItemsForActive.find((oi) => oi.product_id === cItem.product.id);
+      if (!orderItem) return true;
+      return !sentItemIds.has(orderItem.id);
+    });
+  }, [pos.cart, kitchenSendsForActive, orderItemsForActive, sentItemIds]);
 
   const handlePay = useCallback(() => {
     if (pos.cart.length === 0) return;
@@ -253,8 +281,32 @@ export function PosWorkspacePage() {
   useEffect(() => {
     let cancelled = false;
     async function loadData() {
+      setLoading(true);
+      setLoadError('');
       try {
         const fixedBranch = effectiveBranch;
+        
+        // If navigator is offline, immediately try offline cache first
+        if (typeof navigator !== 'undefined' && !navigator.onLine) {
+          const offlineData = await loadCachedPosData(fixedBranch || undefined);
+          const catalogFallback = offlinePosManager.getCatalogCache(fixedBranch || 'default');
+
+          const prodList = offlineData.products.length > 0 ? offlineData.products : catalogFallback?.products || [];
+          const catList = offlineData.categories.length > 0 ? offlineData.categories : catalogFallback?.categories || [];
+
+          if (prodList.length > 0) {
+            if (!cancelled) {
+              setProducts(prodList);
+              setCategories(catList);
+              if (offlineData.customers.length > 0) setCustomers(offlineData.customers);
+              if (offlineData.settings) setSettings(offlineData.settings);
+              if (offlineData.stockMap) setStockMap(offlineData.stockMap);
+              setLoading(false);
+            }
+            return;
+          }
+        }
+
         let cusq = supabase.from('customers').select('*');
         let catq = supabase.from('categories').select('*');
         let areaq = supabase.from('dining_areas').select('*');
@@ -275,20 +327,96 @@ export function PosWorkspacePage() {
           areaq.order('name'),
         ]);
         if (cancelled) return;
+        
         const errors: string[] = [];
+        let loadedProds: Product[] = [];
+        let loadedCats: Category[] = [];
+        let loadedCusts: Customer[] = [];
+        let loadedSettings: Settings | null = null;
+        let loadedBranches: Branch[] = [];
+
         if (pRes.status === 'fulfilled' && pRes.value.error) errors.push('products: ' + pRes.value.error.message);
-        else if (pRes.status === 'fulfilled') setProducts((pRes.value.data as Product[]) || []);
+        else if (pRes.status === 'fulfilled') {
+          loadedProds = (pRes.value.data as Product[]) || [];
+          setProducts(loadedProds);
+        }
+
         if (cRes.status === 'fulfilled' && cRes.value.error) errors.push('customers: ' + cRes.value.error.message);
-        else if (cRes.status === 'fulfilled') setCustomers((cRes.value.data as Customer[]) || []);
+        else if (cRes.status === 'fulfilled') {
+          loadedCusts = (cRes.value.data as Customer[]) || [];
+          setCustomers(loadedCusts);
+        }
+
         if (sRes.status === 'fulfilled' && sRes.value.error) errors.push('settings: ' + sRes.value.error.message);
-        else if (sRes.status === 'fulfilled') setSettings(sRes.value.data as Settings);
+        else if (sRes.status === 'fulfilled') {
+          loadedSettings = sRes.value.data as Settings;
+          setSettings(loadedSettings);
+        }
+
         if (bRes.status === 'fulfilled' && bRes.value.error) errors.push('branches: ' + bRes.value.error.message);
-        else if (bRes.status === 'fulfilled') setBranches((bRes.value.data as Branch[]) || []);
+        else if (bRes.status === 'fulfilled') {
+          loadedBranches = (bRes.value.data as Branch[]) || [];
+          setBranches(loadedBranches);
+        }
+
         if (catRes.status === 'fulfilled' && catRes.value.error) errors.push('categories: ' + catRes.value.error.message);
-        else if (catRes.status === 'fulfilled') setCategories((catRes.value.data as Category[]) || []);
+        else if (catRes.status === 'fulfilled') {
+          loadedCats = (catRes.value.data as Category[]) || [];
+          setCategories(loadedCats);
+        }
+
         if (aRes.status === 'fulfilled' && aRes.value.data) setDiningAreas((aRes.value.data as DiningArea[]) || []);
-        if (errors.length > 0) setLoadError(errors.join('\n'));
+
+        // Cache online data for offline use
+        if (loadedProds.length > 0) {
+          offlinePosManager.saveCatalogCache(fixedBranch || 'default', loadedProds, loadedCats);
+          void cachePosData({
+            branchId: fixedBranch || 'default',
+            products: loadedProds,
+            categories: loadedCats,
+            customers: loadedCusts,
+            settings: loadedSettings,
+            branches: loadedBranches,
+          });
+        }
+
+        // If online query had errors or zero products, attempt offline fallback gracefully
+        if (errors.length > 0 || loadedProds.length === 0) {
+          const offlineData = await loadCachedPosData(fixedBranch || undefined);
+          const catalogFallback = offlinePosManager.getCatalogCache(fixedBranch || 'default');
+          const fallbackProds = offlineData.products.length > 0 ? offlineData.products : catalogFallback?.products || [];
+          const fallbackCats = offlineData.categories.length > 0 ? offlineData.categories : catalogFallback?.categories || [];
+
+          if (fallbackProds.length > 0) {
+            setProducts(fallbackProds);
+            setCategories(fallbackCats);
+            if (offlineData.customers.length > 0) setCustomers(offlineData.customers);
+            if (offlineData.settings) setSettings(offlineData.settings);
+            // Clear errors because we successfully recovered with offline catalog
+          } else if (errors.length > 0) {
+            setLoadError(errors.join('\n'));
+          }
+        }
       } catch (err: unknown) {
+        // Try offline fallback on exception
+        try {
+          const offlineData = await loadCachedPosData(effectiveBranch || undefined);
+          const catalogFallback = offlinePosManager.getCatalogCache(effectiveBranch || 'default');
+          const fallbackProds = offlineData.products.length > 0 ? offlineData.products : catalogFallback?.products || [];
+          const fallbackCats = offlineData.categories.length > 0 ? offlineData.categories : catalogFallback?.categories || [];
+
+          if (fallbackProds.length > 0) {
+            if (!cancelled) {
+              setProducts(fallbackProds);
+              setCategories(fallbackCats);
+              if (offlineData.customers.length > 0) setCustomers(offlineData.customers);
+              if (offlineData.settings) setSettings(offlineData.settings);
+            }
+            return;
+          }
+        } catch {
+          // ignore
+        }
         if (!cancelled) setLoadError(err instanceof Error ? err.message : String(err));
       } finally {
         if (!cancelled) setLoading(false);
@@ -298,7 +426,7 @@ export function PosWorkspacePage() {
     return () => {
       cancelled = true;
     };
-  }, [effectiveBranch]);
+  }, [effectiveBranch, reloadKey, cachePosData, loadCachedPosData]);
 
   useEffect(() => {
     if (effectiveBranch) void loadStock(effectiveBranch);
@@ -417,7 +545,7 @@ export function PosWorkspacePage() {
           <p className="text-lg font-semibold text-ui-text mb-2">{isAr ? 'خطأ في تحميل البيانات' : 'Error Loading Data'}</p>
           <p className="text-sm text-ui-muted mb-4 whitespace-pre-line">{loadError}</p>
           <button
-            onClick={() => window.location.reload()}
+            onClick={() => setReloadKey((k) => k + 1)}
             className="px-6 py-2.5 rounded-xl bg-ui-primary hover:bg-ui-primary-hover text-ui-primary-fg font-bold transition-colors"
           >
             {isAr ? 'إعادة المحاولة' : 'Retry'}
@@ -429,7 +557,33 @@ export function PosWorkspacePage() {
 
   const currentBranchName = branches.find((b) => b.id === effectiveBranch)?.name || '';
   const isCheckout = pos.checkoutOpen;
-  const orderItemsForActive = pos.activeOrderId ? itemsByOrder[pos.activeOrderId] || [] : [];
+
+  const handleSidebarSelectTable = (table: DiningTable) => {
+    const tableOrders = ordersByTable[table.id] || [];
+    if (tableOrders.length > 0) {
+      const ord = tableOrders[0];
+      openOrderWorkspace(ord.id);
+    } else {
+      if (pos.activeOrderId || pos.cart.length > 0) {
+        const ok = window.confirm(
+          isAr
+            ? `سيتم إغلاق مساحة العمل الحالية وبدء طلب جديد على طاولة (${table.name}). متابعة؟`
+            : `Switch to start a new order on Table (${table.name})? Current cart will be cleared.`
+        );
+        if (!ok) return;
+      }
+      pos.startTableOrder(table);
+      if (orderIdParam) navigate('/pos');
+    }
+  };
+
+  const handleConfirmTransfer = async (orderId: string, fromTableId: string, toTableId: string) => {
+    return await pos.transferOrderToTable(orderId, fromTableId, toTableId);
+  };
+
+  const handleConfirmVoid = async (productId: string, voidQuantity: number, reason: string) => {
+    await pos.voidSentItem(productId, voidQuantity, reason);
+  };
 
   const rightPanel = isCheckout ? (
     <PaymentPanel
@@ -508,6 +662,11 @@ export function PosWorkspacePage() {
       onConfigureItem={(item) => setConfigItem(item)}
       onOpenCustomerModal={() => setCustomerModalOpen(true)}
       onOpenTableModal={() => setTableModalOpen(true)}
+      onVoidItem={(item, sentQty) => {
+        setVoidItem(item);
+        setVoidSentQty(sentQty);
+        setVoidModalOpen(true);
+      }}
     />
   );
 
@@ -565,24 +724,98 @@ export function PosWorkspacePage() {
         </div>
       )}
 
-      <div className="flex-1 flex min-h-0">
-        <ProductBrowser
-          products={products}
-          categories={categories}
-          stockMap={stockMap}
-          sellableStock={sellableStock}
-          recipeMap={recipeMap}
-          search={search}
-          selectedCategory={selectedCategory}
-          currency={pos.effCurrency}
-          hasBranch={!!effectiveBranch}
-          onSearch={setSearch}
-          onSelectCategory={setSelectedCategory}
-          onAddToCart={pos.addToCart}
-          onConfigureProduct={(p) => setConfigProduct(p)}
-          inputRef={barcodeRef}
-        />
-        <div className="hidden lg:flex w-[390px] xl:w-[430px] 2xl:w-[460px] flex-shrink-0 flex-col border-s border-ui-border bg-ui-surface shadow-ui-md">
+      {/* Main Split-Screen Workspace */}
+      <div className="flex-1 flex min-h-0 overflow-hidden">
+        {/* Left Side: Dedicated Tables & Open Orders Sidebar (Desktop/Tablet) */}
+        <div className="hidden md:flex shrink-0 h-full">
+          <PosTablesSidebar
+            tables={tables}
+            ordersByTable={ordersByTable}
+            itemsByOrder={itemsByOrder}
+            kitchenSendsByOrder={kitchenSendsByOrder}
+            currency={pos.effCurrency}
+            activeTableId={pos.tableId || pos.activeTable?.id || null}
+            activeOrderId={pos.activeOrderId}
+            collapsed={tablesCollapsed}
+            onToggleCollapse={() => setTablesCollapsed((prev) => !prev)}
+            onSelectTable={handleSidebarSelectTable}
+            onTransferOrder={(ord, tb) => {
+              setTransferOrder(ord);
+              setTransferSourceTable(tb);
+              setTransferModalOpen(true);
+            }}
+            onSelectTakeaway={() => void pos.switchOrderType('takeaway')}
+            onSelectDelivery={() => void pos.switchOrderType('delivery')}
+            activeOrderType={pos.orderType}
+          />
+        </div>
+
+        {/* Center: Product Browser with Fast Order Header Bar */}
+        <div className="flex-1 flex flex-col min-w-0 min-h-0 bg-ui-page">
+          <PosOrderHeaderBar
+            orderNumber={pos.activeOrderNumber}
+            orderId={pos.activeOrderId}
+            activeTable={pos.activeTable}
+            orderType={pos.orderType}
+            itemsCount={pos.cart.reduce((s, it) => s + it.quantity, 0)}
+            total={pos.total}
+            currency={pos.effCurrency}
+            createdAt={activeOrderCreatedAt}
+            kitchenSends={kitchenSendsForActive}
+            orderItems={orderItemsForActive}
+            kitchenSending={pos.kitchenSending}
+            completing={pos.completing}
+            canDiscount={perms.canDiscount}
+            canDeleteItem={perms.canDeleteItem}
+            hasUnsentItems={hasUnsentItems}
+            onOpenTransferModal={() => {
+              if (pos.activeTable && pos.activeOrderId) {
+                const currentOrd =
+                  orders.find((o) => o.id === pos.activeOrderId) ||
+                  ({
+                    id: pos.activeOrderId,
+                    order_number: pos.activeOrderNumber || '000',
+                    table_id: pos.activeTable.id,
+                    total: pos.total,
+                    created_at: new Date().toISOString(),
+                  } as Order);
+                setTransferOrder(currentOrd);
+                setTransferSourceTable(pos.activeTable);
+                setTransferModalOpen(true);
+              }
+            }}
+            onHoldOrder={() => void pos.holdOrder()}
+            onSendKitchen={() => void pos.sendToKitchen()}
+            onPay={handlePay}
+            onClear={pos.clearCart}
+            onNewOrder={() => {
+              pos.resetWorkspace();
+              if (orderIdParam) navigate('/pos');
+            }}
+          />
+
+          <div className="flex-1 min-h-0">
+            <ProductBrowser
+              products={products}
+              categories={categories}
+              stockMap={stockMap}
+              sellableStock={sellableStock}
+              recipeMap={recipeMap}
+              search={search}
+              selectedCategory={selectedCategory}
+              currency={pos.effCurrency}
+              hasBranch={!!effectiveBranch}
+              onSearch={setSearch}
+              onSelectCategory={setSelectedCategory}
+              onAddToCart={pos.addToCart}
+              onConfigureProduct={(p) => setConfigProduct(p)}
+              inputRef={barcodeRef}
+            />
+          </div>
+        </div>
+
+        {/* Right Side: Cart / Order Panel / Checkout */}
+        <div className="hidden lg:flex w-[380px] xl:w-[410px] 2xl:w-[440px] flex-shrink-0 flex-col border-s border-ui-border bg-ui-surface shadow-ui-md">
           {rightPanel}
         </div>
       </div>
@@ -754,6 +987,34 @@ export function PosWorkspacePage() {
         areas={diningAreas}
         selectedTableId={pos.activeTable?.id || null}
         onSelectTable={(table) => pos.setTableId(table.id)}
+      />
+
+      {/* Transfer Order Modal */}
+      <TransferOrderModal
+        open={transferModalOpen}
+        onClose={() => {
+          setTransferModalOpen(false);
+          setTransferOrder(null);
+          setTransferSourceTable(null);
+        }}
+        order={transferOrder}
+        sourceTable={transferSourceTable}
+        tables={tables}
+        areas={diningAreas}
+        ordersByTable={ordersByTable}
+        onConfirmTransfer={handleConfirmTransfer}
+      />
+
+      {/* Void Sent Item Modal */}
+      <VoidItemModal
+        open={voidModalOpen}
+        onClose={() => {
+          setVoidModalOpen(false);
+          setVoidItem(null);
+        }}
+        item={voidItem}
+        sentQty={voidSentQty}
+        onConfirmVoid={handleConfirmVoid}
       />
 
       {/* Shift Modal */}

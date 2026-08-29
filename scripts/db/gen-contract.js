@@ -34,17 +34,34 @@ function walk(dir, out = []) {
 function extractRpcCalls() {
   const calls = new Map();
   for (const file of walk(join(ROOT, 'src', 'api', 'domains'))) {
-    const lines = readFileSync(file, 'utf8').split(/\r?\n/);
-    for (let i = 0; i < lines.length; i += 1) {
-      const m = lines[i].match(/return rpc\('([\w_]+)', p\);/);
-      if (!m) continue;
-      const fn = m[1];
-      for (let j = i; j >= 0; j -= 1) {
-        if (lines[j].includes('(p: {')) {
-          const params = [...new Set([...lines[j].matchAll(/p_([\w]+)(?=\s*:)/g)].map((x) => x[1]))].sort();
-          calls.set(fn, params);
-          break;
+    const content = readFileSync(file, 'utf8');
+    // Find all occurrences of rpc('name', p) or rpc<...>('name', p)
+    const rpcMatches = [...content.matchAll(/rpc(?:<[^>]*>)?\('([\w_]+)',\s*p\)/g)];
+    for (const match of rpcMatches) {
+      const fn = match[1];
+      const matchIndex = match.index;
+      // Get the text before this rpc call
+      const textBefore = content.slice(0, matchIndex);
+      // Find the start of the enclosing method (e.g. `async methodName(p: {` or `methodName(p: {`)
+      const methodStartMatches = [...textBefore.matchAll(/(?:async\s+)?(\w+)\s*\(\s*p\s*:\s*\{/g)];
+      if (methodStartMatches.length > 0) {
+        const lastMethodStart = methodStartMatches[methodStartMatches.length - 1];
+        const methodStartPos = lastMethodStart.index + lastMethodStart[0].length - 1; // At `{`
+        // Find matching closing `}` for `p: { ... }`
+        let braceCount = 0;
+        let paramBlock = '';
+        for (let i = methodStartPos; i < matchIndex; i++) {
+          if (content[i] === '{') braceCount++;
+          else if (content[i] === '}') {
+            braceCount--;
+            if (braceCount === 0) {
+              paramBlock = content.slice(methodStartPos + 1, i);
+              break;
+            }
+          }
         }
+        const params = [...new Set([...paramBlock.matchAll(/p_([\w]+)(?=\s*\??\s*:)/g)].map((x) => x[1]))].sort();
+        calls.set(fn, params);
       }
     }
   }

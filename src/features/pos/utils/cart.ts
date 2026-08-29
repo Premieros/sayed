@@ -20,6 +20,7 @@ export function cartToItems(cart: CartItem[]): ItemPayload[] {
     discount_amount: i.discount_amount,
     bonus_quantity: i.bonus_quantity,
     total: i.quantity * i.unit_price - i.discount_amount,
+    notes: i.modifiers && i.modifiers.length > 0 ? i.modifiers.map((m) => m.name).join(', ') : null,
   }));
 }
 
@@ -34,6 +35,7 @@ export function orderItemsToCart(items: OrderItem[], products: Product[]): CartI
       unit_price: Number(i.unit_price),
       discount_amount: Number(i.discount_amount),
       bonus_quantity: Number(i.bonus_quantity),
+      modifiers: i.notes ? i.notes.split(', ').map((n) => ({ name: n })) : [],
     }))
     .filter((i) => i.product)
     .map((i) => ({ ...i, product: i.product as Product }));

@@ -6,7 +6,7 @@ export type MenuGroup = 'main' | 'catalog' | 'operations' | 'centers' | 'people'
 export type MenuIcon =
   | 'dashboard' | 'subscription' | 'pos' | 'products' | 'categories' | 'components' | 'rawMaterials' | 'recipes' | 'inventory' | 'warehouses' | 'production' | 'transfers'
   | 'inventoryLedger' | 'stockCounts' | 'inventoryBatches' | 'stockValuation'   | 'lowStockAlerts' | 'inventoryUnits' | 'wasteCenter' | 'kitchenDisplay' | 'kitchenStations' | 'costingCenter' | 'branches' | 'purchases' | 'customers' | 'suppliers' | 'expenses'
-  | 'accounts' | 'payments' | 'journal' | 'treasury' | 'reconciliation' | 'financialReports' | 'sales' | 'shifts' | 'reports' | 'users' | 'subscriptionsAdmin' | 'auditLog' | 'settings' | 'superAdmin';
+  | 'accounts' | 'payments' | 'journal' | 'treasury' | 'reconciliation' | 'financialReports' | 'sales' | 'shifts' | 'reports' | 'users' | 'subscriptionsAdmin' | 'auditLog' | 'settings' | 'superAdmin' | 'importExport';
 
 export interface MenuItemConfig { id: string; route: AppRoute; icon: MenuIcon; labelKey: TranslationKey; permission?: Permission; group: MenuGroup; superAdminOnly?: boolean; }
 
@@ -36,6 +36,7 @@ export const MENU_ITEMS: MenuItemConfig[] = [
   { id: 'components', route: APP_ROUTES.components, icon: 'components', labelKey: 'components', permission: 'components.view', group: 'catalog' },
   { id: 'inventory-units', route: APP_ROUTES.inventoryUnits, icon: 'inventoryUnits', labelKey: 'inventoryUnits', permission: 'raw_materials.view', group: 'catalog' },
   { id: 'branches', route: APP_ROUTES.branches, icon: 'branches', labelKey: 'branches', permission: 'branches.manage', group: 'operations' },
+  { id: 'import-export', route: APP_ROUTES.importExport, icon: 'importExport', labelKey: 'importExport', group: 'operations' },
   { id: 'customers', route: APP_ROUTES.customers, icon: 'customers', labelKey: 'customers', permission: 'customers.view', group: 'people' },
   { id: 'suppliers', route: APP_ROUTES.suppliers, icon: 'suppliers', labelKey: 'suppliers', permission: 'suppliers.view', group: 'people' },
   { id: 'expenses', route: APP_ROUTES.expenses, icon: 'expenses', labelKey: 'expenses', permission: 'expenses.view', group: 'finance' },

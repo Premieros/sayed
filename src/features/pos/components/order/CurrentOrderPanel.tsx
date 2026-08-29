@@ -56,6 +56,7 @@ interface CurrentOrderPanelProps {
   onConfigureItem?: (item: CartItem) => void;
   onOpenCustomerModal?: () => void;
   onOpenTableModal?: () => void;
+  onVoidItem?: (item: CartItem, sentQty: number) => void;
 }
 
 export function CurrentOrderPanel({
@@ -97,6 +98,7 @@ export function CurrentOrderPanel({
   onConfigureItem,
   onOpenCustomerModal,
   onOpenTableModal,
+  onVoidItem,
 }: CurrentOrderPanelProps) {
   const { t, lang } = useLanguage();
   const isAr = lang === 'ar';
@@ -269,7 +271,13 @@ export function CurrentOrderPanel({
                     <button
                       data-testid={`pos-cart-qty-decrease-${item.product.id}`}
                       aria-label={isAr ? `تقليل كمية ${item.product.name}` : `Decrease quantity ${item.product.name}`}
-                      onClick={() => onUpdateQty(item.product.id, -1)}
+                      onClick={() => {
+                        if (st.sentQty > 0 && item.quantity <= st.sentQty && onVoidItem) {
+                          onVoidItem(item, st.sentQty);
+                        } else {
+                          onUpdateQty(item.product.id, -1);
+                        }
+                      }}
                       className="h-7 w-7 rounded-lg border border-ui-border flex items-center justify-center text-ui-text hover:bg-ui-surface active:scale-95"
                     >
                       <Minus className="w-3.5 h-3.5" />
@@ -296,7 +304,13 @@ export function CurrentOrderPanel({
 
                   {canDeleteItem && (
                     <button
-                      onClick={() => onRemove(item.product.id)}
+                      onClick={() => {
+                        if (st.sentQty > 0 && onVoidItem) {
+                          onVoidItem(item, st.sentQty);
+                        } else {
+                          onRemove(item.product.id);
+                        }
+                      }}
                       aria-label={isAr ? `حذف ${item.product.name}` : `Remove ${item.product.name}`}
                       className="p-1 text-ui-subtle hover:text-ui-danger transition"
                     >
