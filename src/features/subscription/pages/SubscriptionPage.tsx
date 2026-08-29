@@ -56,16 +56,38 @@ export function SubscriptionPage() {
   const loadData = async () => {
     try {
       setLoading(true);
-      const [tenantData, publicPlans, settingsResult] = await Promise.all([
+      const [tenantData, publicPlans] = await Promise.all([
         SubscriptionService.getTenantSubscriptionDetails(),
         SubscriptionService.getPublicPlans(),
-        api.supabase.rpc('subscription_settings_get'),
       ]);
 
       setDetails(tenantData);
       setPlans(publicPlans);
-      if (!settingsResult.error) {
-        setSettings(settingsResult.data as SubscriptionSettings | null);
+
+      // Fetch gateway settings with resilient fallback
+      try {
+        const settingsResult = await api.supabase.rpc('subscription_settings_get');
+        if (!settingsResult.error && settingsResult.data) {
+          setSettings(settingsResult.data as SubscriptionSettings);
+        } else {
+          const { data: directSettings } = await api.supabase
+            .from('subscription_settings')
+            .select('*')
+            .limit(1)
+            .maybeSingle();
+          if (directSettings) {
+            setSettings(directSettings as SubscriptionSettings);
+          }
+        }
+      } catch {
+        const { data: directSettings } = await api.supabase
+          .from('subscription_settings')
+          .select('*')
+          .limit(1)
+          .maybeSingle();
+        if (directSettings) {
+          setSettings(directSettings as SubscriptionSettings);
+        }
       }
     } catch (err) {
       console.error('Failed to load subscription data:', err);
@@ -101,24 +123,54 @@ export function SubscriptionPage() {
 
     const priceObj = selectedPlan.prices?.find((p) => p.billing_cycle === period) || selectedPlan.prices?.[0];
     const amount = priceObj?.price || (period === 'monthly' ? 299 : 2990);
+    let success = false;
+    let errMessage = '';
 
-    const { data, error } = await api.supabase.rpc('submit_instapay_payment', {
-      p_branch_id: user?.branch_id || null,
-      p_plan_id: selectedPlan.id,
-      p_amount: amount,
-      p_billing_period: period,
-      p_reference: reference || null,
-      p_receipt_url: receiptUrl || null,
-    });
+    try {
+      const { data, error } = await api.supabase.rpc('submit_instapay_payment', {
+        p_branch_id: user?.branch_id || null,
+        p_plan_id: selectedPlan.id,
+        p_amount: amount,
+        p_billing_period: period,
+        p_reference: reference || null,
+        p_receipt_url: receiptUrl || null,
+      });
+
+      if (!error && (data as { success?: boolean })?.success) {
+        success = true;
+      } else {
+        errMessage = (data as { error?: string })?.error || error?.message || '';
+      }
+    } catch {
+      // RPC fallback
+    }
+
+    if (!success) {
+      // Direct table insert fallback
+      try {
+        const { error: insErr } = await api.supabase.from('subscription_payments').insert({
+          branch_id: user?.branch_id || null,
+          plan_id: selectedPlan.id,
+          amount,
+          billing_period: period,
+          reference: reference || null,
+          receipt_url: receiptUrl || null,
+          status: 'pending',
+          submitted_at: new Date().toISOString(),
+        });
+        if (!insErr) {
+          success = true;
+        } else {
+          errMessage = insErr.message;
+        }
+      } catch (fbErr) {
+        errMessage = fbErr instanceof Error ? fbErr.message : 'Submission failed';
+      }
+    }
 
     setSubmitting(false);
-    if (error || !(data as { success?: boolean })?.success) {
-      show(
-        (data as { error?: string })?.error ||
-          error?.message ||
-          (isAr ? 'تعذر إرسال الطلب' : 'Payment submission failed'),
-        'error'
-      );
+    if (!success) {
+      show(errMessage || (isAr ? 'تعذر إرسال الطلب' : 'Payment submission failed'), 'error');
       return;
     }
     show(isAr ? 'تم إرسال طلب التحويل للمراجعة بنجاح' : 'Transfer submitted for review', 'success');

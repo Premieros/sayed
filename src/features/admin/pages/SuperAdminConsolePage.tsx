@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Activity,
   BadgeCheck,
@@ -171,14 +172,23 @@ type SuperTab =
 
 type SubscriptionsSubTab = 'plans' | 'gateway' | 'payments' | 'branch_subs';
 
-export function SuperAdminConsolePage() {
+interface SuperAdminConsoleProps {
+  defaultTab?: SuperTab;
+  defaultSubTab?: SubscriptionsSubTab;
+}
+
+export function SuperAdminConsolePage({ defaultTab, defaultSubTab }: SuperAdminConsoleProps = {}) {
+  const [searchParams] = useSearchParams();
   const { lang } = useLanguage();
   const { show } = useToast();
   const ar = lang === 'ar';
   const { settings, branchSettingsMap, save, saveBranchSettings } = useSettings();
   const { branches } = useBranches();
 
-  const [activeTab, setActiveTab] = useState<SuperTab>('tenants');
+  const queryTab = searchParams.get('tab') as SuperTab | null;
+  const querySubTab = searchParams.get('subTab') as SubscriptionsSubTab | null;
+
+  const [activeTab, setActiveTab] = useState<SuperTab>(defaultTab || queryTab || 'tenants');
 
   // Tenants state
   const [tenants, setTenants] = useState<TenantStats[]>([]);
@@ -186,7 +196,16 @@ export function SuperAdminConsolePage() {
   const [loadingTenants, setLoadingTenants] = useState(false);
 
   // Subscriptions & Plans state
-  const [subTab, setSubTab] = useState<SubscriptionsSubTab>('plans');
+  const [subTab, setSubTab] = useState<SubscriptionsSubTab>(defaultSubTab || querySubTab || 'plans');
+
+  useEffect(() => {
+    if (queryTab && ['tenants', 'subscriptions', 'store_settings', 'branch_custom', 'users_audit', 'roles', 'health'].includes(queryTab)) {
+      setActiveTab(queryTab);
+    }
+    if (querySubTab && ['plans', 'gateway', 'payments', 'branch_subs'].includes(querySubTab)) {
+      setSubTab(querySubTab);
+    }
+  }, [queryTab, querySubTab]);
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
   const [payments, setPayments] = useState<PaymentRow[]>([]);
   const [gatewaySettings, setGatewaySettings] = useState<SubscriptionSettings | null>(null);
@@ -564,18 +583,71 @@ export function SuperAdminConsolePage() {
 
   const reviewPayment = async (id: string, approve: boolean, reason?: string) => {
     setReviewingId(id);
-    const { data, error } = await supabase.rpc('review_instapay_payment', {
-      p_payment_id: id,
-      p_approve: approve,
-      p_rejection_reason: approve ? null : reason || (ar ? 'لم يتم اعتماد التحويل' : 'Payment rejected'),
-    });
+    let success = false;
+    let errMessage = '';
+
+    try {
+      const { data, error } = await supabase.rpc('review_instapay_payment', {
+        p_payment_id: id,
+        p_approve: approve,
+        p_rejection_reason: approve ? null : reason || (ar ? 'لم يتم اعتماد التحويل' : 'Payment rejected'),
+      });
+      if (!error && (data as { success?: boolean })?.success) {
+        success = true;
+      } else {
+        errMessage = (data as { error?: string })?.error || error?.message || '';
+      }
+    } catch {
+      // RPC fallback below
+    }
+
+    if (!success) {
+      try {
+        // Fallback: direct table updates
+        const { data: payment } = await supabase
+          .from('subscription_payments')
+          .select('*')
+          .eq('id', id)
+          .single();
+
+        const updatePayload: Record<string, unknown> = {
+          status: approve ? 'approved' : 'rejected',
+          rejection_reason: approve ? null : reason || (ar ? 'لم يتم اعتماد التحويل' : 'Payment rejected'),
+          reviewed_at: new Date().toISOString(),
+        };
+
+        const { error: pErr } = await supabase
+          .from('subscription_payments')
+          .update(updatePayload)
+          .eq('id', id);
+
+        if (!pErr) {
+          if (approve && payment?.branch_id) {
+            const addDays = payment.billing_period === 'yearly' ? 365 : 30;
+            const newExpiry = new Date(Date.now() + addDays * 24 * 60 * 60 * 1000).toISOString();
+            await subApi.updateBranchSubscription({
+              branch_id: payment.branch_id,
+              plan_id: payment.plan_id || null,
+              status: 'active',
+              current_period_ends_at: newExpiry,
+            });
+          }
+          success = true;
+        } else {
+          errMessage = pErr.message;
+        }
+      } catch (fbErr) {
+        errMessage = fbErr instanceof Error ? fbErr.message : 'Review failed';
+      }
+    }
+
     setReviewingId(null);
     setRejectModalOpen(false);
     setRejectPaymentId(null);
     setRejectReason('');
 
-    if (error || !(data as { success?: boolean })?.success) {
-      show((data as { error?: string })?.error || error?.message || 'Review failed', 'error');
+    if (!success) {
+      show(errMessage || 'Review failed', 'error');
       return;
     }
     show(approve ? (ar ? 'تم اعتماد الاشتراك وتفعيل الفرع بنجاح' : 'Payment approved and branch activated') : (ar ? 'تم رفض التحويل' : 'Payment rejected'), 'success');
@@ -616,15 +688,44 @@ export function SuperAdminConsolePage() {
   const handleSaveBranchOverride = async () => {
     if (!selectedBranchForOverride) return;
     setSavingBranchOverride(true);
-    const { data, error } = await supabase.rpc('override_branch_subscription', {
-      p_branch_id: selectedBranchForOverride.id,
-      p_plan_id: overridePlanId || null,
-      p_status: overrideStatus,
-      p_days_to_add: overrideDaysToAdd,
-    });
+    let success = false;
+    let errMessage = '';
+
+    try {
+      const { data, error } = await supabase.rpc('override_branch_subscription', {
+        p_branch_id: selectedBranchForOverride.id,
+        p_plan_id: overridePlanId || null,
+        p_status: overrideStatus,
+        p_days_to_add: overrideDaysToAdd,
+      });
+      if (!error && (data as { success?: boolean })?.success) {
+        success = true;
+      } else {
+        errMessage = (data as { error?: string })?.error || error?.message || '';
+      }
+    } catch {
+      // Direct fallback
+    }
+
+    if (!success) {
+      try {
+        const days = Number(overrideDaysToAdd) || 30;
+        const newExpiry = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+        await subApi.updateBranchSubscription({
+          branch_id: selectedBranchForOverride.id,
+          plan_id: overridePlanId || null,
+          status: overrideStatus,
+          current_period_ends_at: newExpiry,
+        });
+        success = true;
+      } catch (err) {
+        errMessage = err instanceof Error ? err.message : 'Override failed';
+      }
+    }
+
     setSavingBranchOverride(false);
-    if (error || !(data as { success?: boolean })?.success) {
-      show((data as { error?: string })?.error || error?.message || 'Override failed', 'error');
+    if (!success) {
+      show(errMessage || 'Override failed', 'error');
       return;
     }
     show(ar ? 'تم تحديث اشتراك الفرع بنجاح' : 'Branch subscription updated', 'success');

@@ -1,5 +1,5 @@
-﻿import { useEffect, useMemo, useState } from 'react';
-import { Timer, Play, Square, Printer } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Timer, Play, Square, Printer, FileText, CalendarCheck } from 'lucide-react';
 import { supabase } from '@/api';
 import * as api from '@/api';
 import { useAuth } from '@/context/AuthContext';
@@ -15,10 +15,10 @@ import { usePaginatedRows } from '@/hooks/usePaginatedRows';
 import { Button } from '@/components/Button';
 import { Input, Textarea, Select } from '@/components/Input';
 import { Modal } from '@/components/Modal';
-import { formatCurrency, formatDateTime, escapeHtml } from '@/lib/format';
-import { getBrandHex } from '@/lib/brandColor';
+import { formatCurrency, formatDateTime } from '@/lib/format';
 import { logAudit } from '@/lib/audit';
 import type { Shift, RpcResult } from '@/lib/types';
+import { fetchShiftClosingDetails, buildThermalZReportHtml, buildA4ZReportHtml } from '../services/shiftClosingReport';
 
 interface ShiftUserRow { id: string; full_name: string | null; email: string | null; }
 
@@ -42,7 +42,6 @@ export function ShiftsPage() {
   const { branches } = useBranches();
   const { effectiveSettings } = useSettings();
   const currency = effectiveSettings(branchSel || branchFilter)?.currency || 'EGP';
-  const storeName = effectiveSettings(branchSel || branchFilter)?.store_name || '';
   const [users, setUsers] = useState<ShiftUserRow[]>([]);
 
   const [openModal, setOpenModal] = useState(false);
@@ -50,6 +49,7 @@ export function ShiftsPage() {
 
   const [closeTarget, setCloseTarget] = useState<Shift | null>(null);
   const [closeForm, setCloseForm] = useState({ actual_amount: 0, notes: '' });
+  const [printingId, setPrintingId] = useState<string | null>(null);
 
   const isCashier = user?.role === 'cashier';
 
@@ -59,9 +59,6 @@ export function ShiftsPage() {
   }
   useEffect(() => { loadMeta(); }, []);
 
-  // No PostgREST relationship embeds here: fetching shifts, branches and
-  // users independently and joining client-side is immune to schema-cache
-  // relationship errors (e.g. PGRST200 on shifts_cashier_id_fkey).
   const joinedItems = useMemo(() => {
     const cashierById = new Map(users.map((u) => [u.id, u]));
     return items.map((s) => ({
@@ -109,63 +106,24 @@ export function ShiftsPage() {
     reloadShifts();
   };
 
-  const printReport = (shift: Shift) => {
-    const w = window.open('', '_blank', 'width=760,height=640');
-    if (!w) { show(t('error'), 'error'); return; }
-    const dir = isAr ? 'rtl' : 'ltr';
-    const branchName = escapeHtml(shift.branch?.name || (branches.find((b) => b.id === shift.branch_id)?.name) || '-');
-    const cashierName = escapeHtml(shift.cashier?.full_name || shift.cashier?.email || '-');
-    const rows: [string, string][] = [
-      [t('shift'), `#${shift.id.slice(0, 8).toUpperCase()}`],
-      [t('branch'), branchName],
-      [t('cashier'), cashierName],
-      [t('openedAt'), formatDateTime(shift.opened_at, lang)],
-      [t('closedAt'), shift.closed_at ? formatDateTime(shift.closed_at, lang) : '-'],
-      [t('openingAmount'), formatCurrency(shift.opening_amount, currency, lang)],
-      [t('expectedAmount'), formatCurrency(shift.expected_amount, currency, lang)],
-      [t('actualAmount'), formatCurrency(shift.actual_amount ?? 0, currency, lang)],
-      [t('difference'), formatCurrency(shift.difference, currency, lang)],
-      [t('notes'), escapeHtml(shift.notes || '-')],
-    ];
-    const rowsHtml = rows.map(([k, v]) =>
-      `<tr><td class="k">${k}</td><td class="v">${v}</td></tr>`).join('');
-    const diffColor = Math.abs(shift.difference) > 0.009 ? '#dc2626' : '#16a34a';
-    const brandHex = getBrandHex(600);
-    w.document.write(`<!doctype html>
-<html dir="${dir}" lang="${lang === 'ar' ? 'ar' : 'en'}">
-<head>
-<meta charset="utf-8">
-<title>${t('closeShiftReport')}</title>
-<style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: 'Segoe UI', Tahoma, Arial, sans-serif; padding: 32px; color: #1e293b; }
-  .head { text-align: center; border-bottom: 2px solid ${brandHex}; padding-bottom: 16px; margin-bottom: 20px; }
-  .head h1 { font-size: 20px; color: ${brandHex}; }
-  .head p { color: #64748b; margin-top: 4px; font-size: 13px; }
-  .store { text-align: center; font-size: 15px; font-weight: 700; margin-bottom: 4px; }
-  table { width: 100%; border-collapse: collapse; margin-top: 12px; }
-  td { padding: 10px 12px; border-bottom: 1px solid #e2e8f0; font-size: 14px; }
-  td.k { width: 40%; color: #64748b; }
-  td.v { font-weight: 600; }
-  .diff { color: ${diffColor}; font-size: 16px; }
-  .foot { margin-top: 28px; text-align: center; font-size: 12px; color: #94a3b8; }
-  .badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; background: ${brandHex}; color: #fff; }
-</style>
-</head>
-<body>
-  <div class="head">
-    <div class="store">${escapeHtml(storeName || 'POS')}</div>
-    <h1>${t('closeShiftReport')}</h1>
-    <p>${formatDateTime(new Date().toISOString(), lang)}</p>
-  </div>
-  <div style="text-align:center;"><span class="badge">${t('shiftStatus')}: ${t(shift.status === 'open' ? 'open' : 'closed')}</span></div>
-  <table>${rowsHtml}</table>
-  <div class="foot">${isAr ? 'تقرير إغلاق شيفت - نظام نقاط البيع' : 'Shift Close Report - POS System'}</div>
-  <script>window.onload = function(){ window.print(); };</script>
-</body>
-</html>`);
-    w.document.close();
-    w.focus();
+  const handlePrintZReport = async (shift: Shift, format: 'thermal' | 'a4') => {
+    setPrintingId(shift.id);
+    try {
+      const summary = await fetchShiftClosingDetails(shift.id, shift.branch_id);
+      const html = format === 'thermal'
+        ? buildThermalZReportHtml(summary, currency, lang)
+        : buildA4ZReportHtml(summary, currency, lang);
+
+      const w = window.open('', '_blank', format === 'thermal' ? 'width=380,height=600' : 'width=900,height=800');
+      if (w) {
+        w.document.write(html);
+        w.document.close();
+      }
+    } catch (err: unknown) {
+      show(err instanceof Error ? err.message : 'Error generating report', 'error');
+    } finally {
+      setPrintingId(null);
+    }
   };
 
   const filtered = joinedItems.filter((i) => {
@@ -196,12 +154,29 @@ export function ShiftsPage() {
     )},
     { key: 'closed_at', header: t('closedAt'), render: (r) => r.closed_at ? <span className="text-sm text-ui-subtle">{formatDateTime(r.closed_at, lang)}</span> : '-' },
     { key: 'actions', header: t('actions'), render: (r) => (
-      <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
-        <button onClick={() => printReport(r)} className="p-1.5 rounded-md hover:bg-ui-info-soft text-ui-info" title={t('print')}>
+      <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+        <button
+          onClick={() => handlePrintZReport(r, 'thermal')}
+          disabled={printingId === r.id}
+          className="p-1.5 rounded-md hover:bg-ui-info-soft text-ui-info transition"
+          title={isAr ? 'طباعة إيصال Z-Report حراري' : 'Print Thermal Z-Report'}
+        >
           <Printer className="w-4 h-4" />
         </button>
+        <button
+          onClick={() => handlePrintZReport(r, 'a4')}
+          disabled={printingId === r.id}
+          className="p-1.5 rounded-md hover:bg-ui-primary-soft text-ui-primary transition"
+          title={isAr ? 'طباعة تقرير إغلاق A4 تفصيلي (المبيعات والمكونات)' : 'Print A4 Full Closing Report'}
+        >
+          <FileText className="w-4 h-4" />
+        </button>
         {r.status === 'open' && can('shifts.close') && (
-          <button onClick={() => { setCloseTarget(r); setCloseForm({ actual_amount: r.expected_amount, notes: '' }); }} className="p-1.5 rounded-md hover:bg-brand-50 dark:hover:bg-brand-900/20 text-brand-500" title={t('closeShift')}>
+          <button
+            onClick={() => { setCloseTarget(r); setCloseForm({ actual_amount: r.expected_amount, notes: '' }); }}
+            className="p-1.5 rounded-md hover:bg-ui-danger-soft text-ui-danger transition"
+            title={isAr ? 'إغلاق اليوم والوردية' : t('closeShift')}
+          >
             <Square className="w-4 h-4" />
           </button>
         )}
@@ -213,13 +188,27 @@ export function ShiftsPage() {
 
   return (
     <DesignSurface testId="shifts-page">
-      <DesignPageHeader title={t('shifts')} subtitle={isAr ? 'إدارة ومراقبة شيفتات الكاشير' : 'Manage and monitor cashier shifts'} actions={
-        isCashier && can('shifts.open') ? (
-          <Button onClick={() => setOpenModal(true)}>
-            <Play className="w-4 h-4" /> {t('openShift')}
-          </Button>
-        ) : undefined
-      } />
+      <DesignPageHeader
+        title={isAr ? 'إدارة وإغلاق الورديات واليومية' : t('shifts')}
+        subtitle={isAr ? 'مراقبة الورديات، إغلاق اليومية، وطباعة تقارير Z-Report وتفاصيل المبيعات والمكونات' : 'Manage shifts, close day, and print comprehensive Z-reports with ingredients & sales'}
+        actions={
+          <div className="flex gap-2">
+            {openShifts.length > 0 && (
+              <Button
+                variant="outline"
+                onClick={() => handlePrintZReport(openShifts[0], 'a4')}
+              >
+                <CalendarCheck className="w-4 h-4" /> {isAr ? 'تقرير اليومية المباشر' : 'Live Daily Report'}
+              </Button>
+            )}
+            {isCashier && can('shifts.open') && (
+              <Button onClick={() => setOpenModal(true)}>
+                <Play className="w-4 h-4" /> {t('openShift')}
+              </Button>
+            )}
+          </div>
+        }
+      />
 
       {isCashier && openShifts.length > 0 && (
         <DesignPanel className="border-brand-200 dark:border-brand-800 bg-brand-50/50 dark:bg-brand-900/10" testId="shifts-open-banner">
@@ -231,11 +220,16 @@ export function ShiftsPage() {
                 <p className="text-sm text-brand-700 dark:text-brand-400">{t('expectedAmount')}: {formatCurrency(openShifts[0].expected_amount, currency, lang)}</p>
               </div>
             </div>
-            {can('shifts.close') && (
-              <Button variant="danger" size="sm" onClick={() => { setCloseTarget(openShifts[0]); setCloseForm({ actual_amount: openShifts[0].expected_amount, notes: '' }); }}>
-                <Square className="w-4 h-4" /> {t('closeShift')}
+            <div className="flex items-center gap-2">
+              <Button size="sm" variant="outline" onClick={() => handlePrintZReport(openShifts[0], 'thermal')}>
+                <Printer className="w-4 h-4" /> {isAr ? 'إيصال Z-Report' : 'Thermal Z-Report'}
               </Button>
-            )}
+              {can('shifts.close') && (
+                <Button variant="danger" size="sm" onClick={() => { setCloseTarget(openShifts[0]); setCloseForm({ actual_amount: openShifts[0].expected_amount, notes: '' }); }}>
+                  <Square className="w-4 h-4" /> {isAr ? 'إغلاق اليوم والوردية' : t('closeShift')}
+                </Button>
+              )}
+            </div>
           </div>
         </DesignPanel>
       )}
@@ -275,7 +269,7 @@ export function ShiftsPage() {
         </div>
       </Modal>
 
-      <Modal open={!!closeTarget} onClose={() => setCloseTarget(null)} title={t('closeShift')}>
+      <Modal open={!!closeTarget} onClose={() => setCloseTarget(null)} title={isAr ? 'إغلاق اليوم والوردية (Z-Report)' : t('closeShift')}>
         {closeTarget && (
           <div className="space-y-4">
             <div className="grid grid-cols-3 gap-3 text-center">
@@ -292,12 +286,22 @@ export function ShiftsPage() {
                 <p className="font-semibold">{formatCurrency(closeTarget.expected_amount - closeTarget.opening_amount, currency, lang)}</p>
               </div>
             </div>
-            <Input type="number" min={0} step="0.01" label={t('actualAmount')} value={String(closeForm.actual_amount)}
+
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" size="sm" className="flex-1" onClick={() => handlePrintZReport(closeTarget, 'thermal')}>
+                <Printer className="w-4 h-4" /> {isAr ? 'معاينة إيصال Z-Report' : 'Preview Thermal'}
+              </Button>
+              <Button type="button" variant="outline" size="sm" className="flex-1" onClick={() => handlePrintZReport(closeTarget, 'a4')}>
+                <FileText className="w-4 h-4" /> {isAr ? 'معاينة تقرير A4' : 'Preview A4'}
+              </Button>
+            </div>
+
+            <Input type="number" min={0} step="0.01" label={isAr ? 'المبلغ الفعلي بالدرج (العد الفعلي) *' : t('actualAmount')} value={String(closeForm.actual_amount)}
               onChange={(e) => setCloseForm({ ...closeForm, actual_amount: Number(e.target.value) })} />
-            <Textarea label={t('notes')} value={closeForm.notes} onChange={(e) => setCloseForm({ ...closeForm, notes: e.target.value })} rows={2} />
-            <div className="flex justify-end gap-2">
+            <Textarea label={isAr ? 'ملاحظات إغلاق اليوم والوردية' : t('notes')} value={closeForm.notes} onChange={(e) => setCloseForm({ ...closeForm, notes: e.target.value })} rows={2} />
+            <div className="flex justify-end gap-2 pt-2">
               <Button variant="secondary" onClick={() => setCloseTarget(null)}>{t('cancel')}</Button>
-              <Button variant="danger" onClick={closeShift}><Square className="w-4 h-4" /> {t('closeShift')}</Button>
+              <Button variant="danger" onClick={closeShift}><Square className="w-4 h-4" /> {isAr ? 'تأكيد إغلاق اليوم والوردية' : t('closeShift')}</Button>
             </div>
           </div>
         )}
@@ -305,3 +309,4 @@ export function ShiftsPage() {
     </DesignSurface>
   );
 }
+

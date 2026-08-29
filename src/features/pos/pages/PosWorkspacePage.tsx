@@ -524,6 +524,7 @@ export function PosWorkspacePage() {
         isCashier={isCashier}
         shiftChecked={shiftChecked}
         activeShift={activeShift}
+        onOpenShiftModal={() => setShiftModalOpen(true)}
         onNewOrder={() => {
           pos.resetWorkspace();
           setStartStep('type');

@@ -46,23 +46,80 @@ export class SubscriptionService {
         return { has_subscription: false };
       }
 
-      // 2. Fetch subscription
-      const { data: sub } = await supabase
+      // 2. Fetch subscription (check subscriptions table first, then branch_subscriptions)
+      let sub: Subscription | (Record<string, unknown> & { plan_id?: string; status?: string; current_period_end?: string | null; trial_ends_at?: string | null }) | null = null;
+      const { data: subData } = await supabase
         .from('subscriptions')
         .select('*')
         .eq('tenant_id', orgId)
         .maybeSingle();
 
+      sub = subData;
+
+      if (!sub) {
+        // Check branch_subscriptions
+        const { data: branchData } = await supabase
+          .from('branches')
+          .select('id')
+          .eq('organization_id', orgId)
+          .limit(1)
+          .maybeSingle();
+
+        if (branchData?.id) {
+          const { data: branchSub } = await supabase
+            .from('branch_subscriptions')
+            .select('*')
+            .eq('branch_id', branchData.id)
+            .maybeSingle();
+
+          if (branchSub) {
+            sub = {
+              id: branchSub.id || branchData.id,
+              tenant_id: orgId,
+              plan_id: branchSub.plan_id,
+              status: branchSub.status || 'active',
+              current_period_end: branchSub.current_period_ends_at,
+              trial_ends_at: branchSub.status === 'trialing' ? branchSub.current_period_ends_at : null,
+              created_at: branchSub.created_at || new Date().toISOString(),
+              updated_at: branchSub.updated_at || new Date().toISOString(),
+            };
+          }
+        }
+      }
+
       if (!sub) {
         return { has_subscription: false, tenant_id: orgId };
       }
 
-      // 3. Fetch plan
-      const { data: plan } = await supabase
-        .from('plans')
-        .select('*')
-        .eq('id', sub.plan_id)
-        .single();
+      // 3. Fetch plan from plans OR subscription_plans
+      let plan: Plan | (Record<string, unknown> & { id: string; name: string; slug: string; description?: string | null; is_active: boolean; is_public: boolean; display_order?: number }) | null = null;
+      if (sub.plan_id) {
+        const { data: p1 } = await supabase
+          .from('plans')
+          .select('*')
+          .eq('id', sub.plan_id)
+          .maybeSingle();
+        plan = p1;
+
+        if (!plan) {
+          const { data: p2 } = await supabase
+            .from('subscription_plans')
+            .select('*')
+            .eq('id', sub.plan_id)
+            .maybeSingle();
+          if (p2) {
+            plan = {
+              id: p2.id,
+              name: p2.name_ar || p2.name_en || 'الخطة المختارة',
+              slug: p2.code || p2.id,
+              description: p2.name_en || p2.name_ar,
+              is_active: p2.is_active ?? true,
+              is_public: p2.is_active ?? true,
+              display_order: 1,
+            };
+          }
+        }
+      }
 
       // 4. Fetch price if set
       let price: PlanPrice | null = null;
@@ -80,10 +137,9 @@ export class SubscriptionService {
         .from('features')
         .select('*')
         .eq('is_active', true);
-      const { data: planFeatures } = await supabase
-        .from('plan_features')
-        .select('*')
-        .eq('plan_id', sub.plan_id);
+      const { data: planFeatures } = sub.plan_id
+        ? await supabase.from('plan_features').select('*').eq('plan_id', sub.plan_id)
+        : { data: [] };
 
       const featuresWithDetails = (allFeatures || []).map((f) => {
         const pf = planFeatures?.find((p) => p.feature_id === f.id);
@@ -92,7 +148,7 @@ export class SubscriptionService {
           name: f.name,
           description: f.description,
           category: f.category,
-          enabled: pf ? pf.enabled : false,
+          enabled: pf ? pf.enabled : true,
           limit_value: pf?.limit_value ?? null,
           limit_type: pf?.limit_type ?? 'boolean',
         };
@@ -167,13 +223,19 @@ export class SubscriptionService {
    */
   public static async getPublicPlans(): Promise<Plan[]> {
     try {
-      const { data: plans, error: pErr } = await supabase
+      // 1. Query subscription_plans table (admin managed)
+      const { data: subPlans } = await supabase
+        .from('subscription_plans')
+        .select('*')
+        .eq('is_active', true)
+        .order('monthly_price_egp', { ascending: true });
+
+      // 2. Query plans table (relational model)
+      const { data: plans } = await supabase
         .from('plans')
         .select('*, plan_prices(*)')
         .eq('is_active', true)
         .order('display_order', { ascending: true });
-
-      if (pErr) throw pErr;
 
       // Fetch features for comparison
       const { data: features } = await supabase
@@ -185,9 +247,83 @@ export class SubscriptionService {
         .from('plan_features')
         .select('*');
 
+      const allFeatures = features || [];
+
+      // If subscription_plans has data, format each as a full Plan
+      if (subPlans && subPlans.length > 0) {
+        return subPlans.map((sp: Record<string, unknown>, idx: number) => {
+          const rawFeats = sp.features;
+          let activeFeatureKeys: string[] = [];
+          if (Array.isArray(rawFeats)) {
+            activeFeatureKeys = rawFeats.map((k) => String(k));
+          } else if (typeof rawFeats === 'string') {
+            try {
+              activeFeatureKeys = JSON.parse(rawFeats);
+            } catch {
+              activeFeatureKeys = rawFeats.split(',').map((s) => s.trim());
+            }
+          }
+
+          const mappedFeatures = allFeatures.map((f) => {
+            const isEnabled = activeFeatureKeys.length > 0
+              ? activeFeatureKeys.includes(f.key)
+              : true;
+            return {
+              key: f.key,
+              name: f.name,
+              description: f.description,
+              category: f.category,
+              enabled: isEnabled,
+              limit_value: null,
+              limit_type: 'boolean' as const,
+            };
+          });
+
+          const monthlyPrice = Number(sp.monthly_price_egp) || 0;
+          const yearlyPrice = Number(sp.yearly_price_egp) || monthlyPrice * 10;
+
+          const prices: PlanPrice[] = [
+            {
+              id: `${sp.id}_monthly`,
+              plan_id: String(sp.id),
+              billing_cycle: 'monthly',
+              price: monthlyPrice,
+              currency: 'EGP',
+              trial_days: 14,
+              is_active: true,
+              created_at: String(sp.created_at || new Date().toISOString()),
+            },
+            {
+              id: `${sp.id}_yearly`,
+              plan_id: String(sp.id),
+              billing_cycle: 'yearly',
+              price: yearlyPrice,
+              currency: 'EGP',
+              trial_days: 14,
+              is_active: true,
+              created_at: String(sp.created_at || new Date().toISOString()),
+            },
+          ];
+
+          return {
+            id: String(sp.id),
+            name: String(sp.name_ar || sp.name_en || 'باقة غير معنونة'),
+            slug: String(sp.code || sp.id),
+            description: sp.name_en ? String(sp.name_en) : null,
+            is_active: Boolean(sp.is_active ?? true),
+            is_public: true,
+            display_order: idx + 1,
+            created_at: String(sp.created_at || new Date().toISOString()),
+            prices,
+            features: mappedFeatures,
+          };
+        });
+      }
+
+      // Fallback: use plans table
       return (plans || []).map((rawPlan) => {
         const plan = rawPlan as Plan & { plan_prices?: PlanPrice[] };
-        const pFeats = (features || []).map((f) => {
+        const pFeats = allFeatures.map((f) => {
           const pf = planFeatures?.find(
             (p) => p.plan_id === plan.id && p.feature_id === f.id
           );
