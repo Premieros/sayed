@@ -143,10 +143,29 @@ export function OfflineProvider({ children }: { children: React.ReactNode }) {
   return <OfflineContext.Provider value={value}>{children}</OfflineContext.Provider>;
 }
 
+const defaultOfflineValue: OfflineContextValue = {
+  isOnline: typeof navigator !== 'undefined' ? navigator.onLine : true,
+  isSyncing: false,
+  pendingCount: 0,
+  lastSyncTime: null,
+  lastError: null,
+  syncedRecentlyCount: 0,
+  syncNow: async () => ({ successCount: 0, failedCount: 0 }),
+  cachePosData: async () => {},
+  loadCachedPosData: async () => ({
+    products: [],
+    categories: [],
+    customers: [],
+    tables: [],
+    settings: null,
+    stockMap: {},
+  }),
+  queueSaleForOffline: async () => '',
+  getOfflineQueue: async () => [],
+  discardQueuedSale: async () => {},
+};
+
 export function useOffline() {
   const ctx = useContext(OfflineContext);
-  if (!ctx) {
-    throw new Error('useOffline must be used within OfflineProvider');
-  }
-  return ctx;
+  return ctx || defaultOfflineValue;
 }

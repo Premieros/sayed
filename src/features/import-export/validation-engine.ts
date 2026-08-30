@@ -2,7 +2,7 @@ import { ImportExportEntity, ValidationError, ValidationSummary } from './types'
 import { ENTITY_CONFIGS } from './entity-configs';
 
 export interface ValidationContext {
-  existingProducts: Array<{ id: string; sku: string; name: string; barcode?: string | null; category_id?: string | null; unit?: string | null }>;
+  existingProducts: Array<{ id: string; sku: string; name: string; barcode?: string | null; category_id?: string | null; unit?: string | null; cost_price?: number; sale_price?: number }>;
   existingCategories: Array<{ id: string; code?: string; name: string; name_ar?: string }>;
   existingComponents: Array<{ id: string; sku: string; name: string; unit: string; cost?: number }>;
   existingSuppliers: Array<{ id: string; code?: string; name: string; phone?: string }>;
@@ -269,15 +269,15 @@ export class ValidationEngine {
               (p) => p.sku?.toLowerCase() === prodSku.toLowerCase() || p.id === prodSku
             );
             if (!productExists) {
-              errors.push({
+              warnings.push({
                 rowNumber,
                 column: 'كود المنتج التام',
                 value: prodSku,
-                message: `المنتج التام "${prodSku}" غير مسجل في دليل الأصناف.`,
-                messageEn: `Finished Product "${prodSku}" not found in products master.`,
-                remedy: `قم باستيراد أو إضافة بطاقة المنتج "${prodSku}" أولاً في شاشة المنتجات ثم أعد استيراد الوصفة.`,
-                remedyEn: `Create product "${prodSku}" in products catalog before importing recipe.`,
-                severity: 'error',
+                message: `المنتج التام "${prodSku}" غير مسجل مسبقاً، سيتم إنشاؤه تلقائياً كمنتج تصنيعي.`,
+                messageEn: `Finished Product "${prodSku}" not found. Will be auto-created as a manufactured item.`,
+                remedy: `لا يتطلب إجراء، سيقوم النظام بتسجيله أثناء الاستيراد.`,
+                remedyEn: `No action required, auto-registration will proceed.`,
+                severity: 'warning',
               });
             }
           }
@@ -300,15 +300,15 @@ export class ValidationEngine {
             ) || context.existingProducts.some((p) => p.sku?.toLowerCase() === compSku.toLowerCase());
 
             if (!compExists) {
-              errors.push({
+              warnings.push({
                 rowNumber,
                 column: 'كود المكون',
                 value: compSku,
-                message: `المكون / المادة الخام "${compSku}" غير موجود في دليل المواد الخام.`,
-                messageEn: `Component / Raw Material "${compSku}" not found in components catalog.`,
-                remedy: `أضف المكون "${compSku}" أولاً في شاشة المواد الخام ثم أعد الاستيراد.`,
-                remedyEn: `Add component "${compSku}" in Raw Materials before importing.`,
-                severity: 'error',
+                message: `المادة الخام "${compSku}" غير مسجلة مسبقاً، سيتم إنشاؤها تلقائياً في دليل المواد الخام.`,
+                messageEn: `Raw material "${compSku}" not found. Will be auto-created in raw materials master.`,
+                remedy: `لا يتطلب إجراء، سيقوم النظام بإنشائها أثناء الاستيراد.`,
+                remedyEn: `No action needed, will be auto-created.`,
+                severity: 'warning',
               });
             }
           }

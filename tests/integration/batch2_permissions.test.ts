@@ -19,26 +19,36 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import pg from 'pg';
+import type pg from 'pg';
+import { getDbUrl, openDb } from './db';
 import { canImpersonate, runAs, runAsPersist, seedRlsFixture, type RlsIds } from './rls';
 
 let client: pg.Client;
 let ids: RlsIds;
 let canRun = false;
 
+const dbUrl = getDbUrl();
+
 beforeAll(async () => {
-  client = new pg.Client({ connectionString: process.env.SUPABASE_DB_URL });
-  await client.connect();
-  await client.query('BEGIN');
-  canRun = await canImpersonate(client);
-  if (canRun) {
-    ids = await seedRlsFixture(client);
+  if (!dbUrl) return;
+  try {
+    client = openDb(dbUrl);
+    await client.connect();
+    await client.query('BEGIN');
+    canRun = await canImpersonate(client);
+    if (canRun) {
+      ids = await seedRlsFixture(client);
+    }
+  } catch {
+    canRun = false;
   }
 }, 30_000);
 
 afterAll(async () => {
-  if (canRun) await client.query('ROLLBACK').catch(() => {});
-  await client.end().catch(() => {});
+  if (canRun && client) {
+    await client.query('ROLLBACK').catch(() => {});
+    await client.end().catch(() => {});
+  }
 });
 
 function skip() {

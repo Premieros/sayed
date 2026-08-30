@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 
 // Premier is deployed as a GitHub Pages project site at /sayed/.
 export default defineConfig({
-  base: '/sayed/',
+  base: process.env.VITE_BASE_PATH || './',
   plugins: [react()],
   server: {
     host: '0.0.0.0',

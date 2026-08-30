@@ -27,6 +27,8 @@ import {
   Info,
   X,
   SlidersHorizontal,
+  Sparkles,
+  AlertTriangle,
 } from 'lucide-react';
 import { supabase } from '@/api';
 import { useLanguage } from '@/context/LanguageContext';
@@ -92,20 +94,20 @@ export function ImportExportCenterPage() {
         brsRes,
         usersRes,
       ] = await Promise.all([
-        supabase.from('products').select('id, sku, name, barcode, category_id'),
-        supabase.from('categories').select('id, code, name, name_en'),
-        supabase.from('raw_materials').select('id, sku, name, unit, cost_price'),
-        supabase.from('suppliers').select('id, code, name, phone'),
-        supabase.from('customers').select('id, code, name, phone'),
-        supabase.from('warehouses').select('id, code, name, branch_id'),
-        supabase.from('branches').select('id, code, name'),
-        supabase.from('users').select('id, username, email'),
+        Promise.resolve(supabase.from('products').select('*')).catch(() => ({ data: [], error: null })),
+        Promise.resolve(supabase.from('categories').select('*')).catch(() => ({ data: [], error: null })),
+        Promise.resolve(supabase.from('raw_materials').select('*')).catch(() => ({ data: [], error: null })),
+        Promise.resolve(supabase.from('suppliers').select('*')).catch(() => ({ data: [], error: null })),
+        Promise.resolve(supabase.from('customers').select('*')).catch(() => ({ data: [], error: null })),
+        Promise.resolve(supabase.from('warehouses').select('*')).catch(() => ({ data: [], error: null })),
+        Promise.resolve(supabase.from('branches').select('*')).catch(() => ({ data: [], error: null })),
+        Promise.resolve(supabase.from('users').select('*')).catch(() => ({ data: [], error: null })),
       ]);
 
       const isSuper = user?.role === 'super_admin';
       const userBranch = user?.branch_id || null;
-      const branches = (brsRes.data as Array<{ id: string; code?: string; name: string }>) || [];
-      const warehouses = (whsRes.data as Array<{ id: string; code?: string; name: string; branch_id?: string }>) || [];
+      const branches = ((brsRes as { data: Array<{ id: string; code?: string; name: string }> })?.data || []) as Array<{ id: string; code?: string; name: string }>;
+      const warehouses = ((whsRes as { data: Array<{ id: string; code?: string; name: string; branch_id?: string }> })?.data || []) as Array<{ id: string; code?: string; name: string; branch_id?: string }>;
 
       const allowedBranches = isSuper
         ? branches.map((b) => b.id)
@@ -117,30 +119,52 @@ export function ImportExportCenterPage() {
         ? warehouses.map((w) => w.id)
         : warehouses.filter((w) => !w.branch_id || allowedBranches.includes(w.branch_id)).map((w) => w.id);
 
+      const prodsList = ((prodsRes as { data: Record<string, unknown>[] })?.data || []);
+      const catsList = ((catsRes as { data: Record<string, unknown>[] })?.data || []);
+      const compsList = ((compsRes as { data: Record<string, unknown>[] })?.data || []);
+      const suppsList = ((suppsRes as { data: Record<string, unknown>[] })?.data || []);
+      const custsList = ((custsRes as { data: Record<string, unknown>[] })?.data || []);
+      const usersList = ((usersRes as { data: Record<string, unknown>[] })?.data || []);
+
       setValidationContext({
-        existingProducts: ((prodsRes.data || []) as Array<{ id: string; sku?: string | null; name: string; barcode?: string | null; category_id?: string | null }>).map((p) => ({
-          id: p.id,
-          sku: p.sku || '',
-          name: p.name,
-          barcode: p.barcode,
-          category_id: p.category_id,
+        existingProducts: prodsList.map((p) => ({
+          id: String(p.id || ''),
+          sku: String(p.sku || p.name || ''),
+          name: String(p.name || ''),
+          barcode: p.barcode ? String(p.barcode) : undefined,
+          category_id: p.category_id ? String(p.category_id) : undefined,
         })),
-        existingCategories: (catsRes.data as Array<{ id: string; code?: string; name: string; name_ar?: string }>) || [],
-        existingComponents: ((compsRes.data || []) as Array<{ id: string; sku?: string | null; name: string; unit?: string | null; cost_price?: number }>).map((c) => ({
-          id: c.id,
-          sku: c.sku || '',
-          name: c.name,
-          unit: c.unit || 'قطعة',
-          cost: c.cost_price,
+        existingCategories: catsList.map((c) => ({
+          id: String(c.id || ''),
+          code: String(c.code || c.name || ''),
+          name: String(c.name || ''),
+          name_en: c.name_en ? String(c.name_en) : undefined,
         })),
-        existingSuppliers: (suppsRes.data as Array<{ id: string; code?: string; name: string; phone?: string }>) || [],
-        existingCustomers: (custsRes.data as Array<{ id: string; code?: string; name: string; phone?: string }>) || [],
+        existingComponents: compsList.map((c) => ({
+          id: String(c.id || ''),
+          sku: String(c.code || c.sku || c.name || ''),
+          name: String(c.name || ''),
+          unit: String(c.unit || c.description || 'قطعة'),
+          cost: Number(c.default_cost ?? c.cost_price ?? 0),
+        })),
+        existingSuppliers: suppsList.map((s) => ({
+          id: String(s.id || ''),
+          code: s.code ? String(s.code) : undefined,
+          name: String(s.name || ''),
+          phone: s.phone ? String(s.phone) : undefined,
+        })),
+        existingCustomers: custsList.map((c) => ({
+          id: String(c.id || ''),
+          code: c.code ? String(c.code) : undefined,
+          name: String(c.name || ''),
+          phone: c.phone ? String(c.phone) : undefined,
+        })),
         existingWarehouses: warehouses,
         existingBranches: branches,
-        existingUsers: ((usersRes.data || []) as Array<{ id: string; username?: string | null; email?: string }>).map((u) => ({
-          id: u.id,
-          username: u.username || u.email || 'user',
-          email: u.email,
+        existingUsers: usersList.map((u) => ({
+          id: String(u.id || ''),
+          username: String(u.username || u.email || 'user'),
+          email: u.email ? String(u.email) : undefined,
         })),
         userBranchId: userBranch,
         isSuperAdmin: isSuper,
@@ -299,6 +323,45 @@ export function ImportExportCenterPage() {
       const errMsg = err instanceof Error ? err.message : String(err);
       show(isAr ? `تعذر قراءة الملف: ${errMsg}` : `Failed to parse file: ${errMsg}`, 'error');
     }
+  };
+
+  // Handle loading built-in sample data for testing
+  const handleLoadSampleData = () => {
+    if (!currentEntityConfig) return;
+    const sampleRows = currentEntityConfig.sampleRows;
+    if (!sampleRows || sampleRows.length === 0) {
+      show(isAr ? 'لا توجد بيانات تجريبية متوفرة لهذا الكيان' : 'No sample data available for this entity', 'error');
+      return;
+    }
+
+    const headers = Object.keys(sampleRows[0]);
+    const mockFile: ParsedSpreadsheet = {
+      headers,
+      rawRows: sampleRows,
+      totalRows: sampleRows.length,
+      fileName: `${selectedEntity}_sample_data.xlsx`,
+    };
+    setParsedFile(mockFile);
+
+    // Auto-detect columns
+    const detectedMapping = ExcelService.detectAndMapColumns(headers, selectedEntity);
+    setColumnMapping(detectedMapping);
+
+    const transformed = ExcelService.transformMappedRows(sampleRows, detectedMapping);
+    setMappedRows(transformed);
+
+    // Run Validation
+    const summary = ValidationEngine.validate(selectedEntity, transformed, validationContext);
+    setValidationSummary(summary);
+
+    // Advance to validation step
+    setWizardStep(4);
+    show(
+      isAr
+        ? `تم تحميل البيانات التجريبية بنجاح (${sampleRows.length} سجل)`
+        : `Sample data loaded successfully (${sampleRows.length} records)`,
+      'success'
+    );
   };
 
   // Re-run validation on column mapping change
@@ -711,14 +774,26 @@ export function ImportExportCenterPage() {
                         : 'Supports .xlsx, .xls, .csv. Headers and columns are mapped automatically.'}
                     </p>
 
-                    <Button
-                      size="lg"
-                      onClick={() => fileInputRef.current?.click()}
-                      className="mt-6 gap-2 px-6"
-                    >
-                      <FileSpreadsheet className="w-5 h-5" />
-                      <span>{isAr ? 'استعراض واختيار ملف من جهازك' : 'Browse Files from Computer'}</span>
-                    </Button>
+                    <div className="flex flex-wrap items-center justify-center gap-3 mt-6">
+                      <Button
+                        size="lg"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="gap-2 px-6"
+                      >
+                        <FileSpreadsheet className="w-5 h-5" />
+                        <span>{isAr ? 'استعراض واختيار ملف من جهازك' : 'Browse Files from Computer'}</span>
+                      </Button>
+
+                      <Button
+                        size="lg"
+                        variant="secondary"
+                        onClick={handleLoadSampleData}
+                        className="gap-2 px-5 bg-primary/10 text-primary hover:bg-primary/20 border border-primary/20"
+                      >
+                        <Sparkles className="w-4 h-4" />
+                        <span>{isAr ? 'اختبار سريع ببيانات تجريبية جاهزة' : 'Quick Test with Sample Data'}</span>
+                      </Button>
+                    </div>
                   </DesignPanel>
                 </div>
               </div>
