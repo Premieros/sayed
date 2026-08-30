@@ -1,0 +1,1 @@
+Audit consolidation branch created from current main. Database and integration/RLS baseline are green. Browser-smoke remains the final gate; verification concurrency is configured not to cancel active runs.
