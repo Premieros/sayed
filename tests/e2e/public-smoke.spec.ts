@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 
-const SUPABASE_ORIGIN = 'https://lwnsdsncmlsroiswgoga.supabase.co';
+const SUPABASE_ORIGIN = 'https://nahptrsihcidcxkjzwdp.supabase.co';
 
 const protectedRoutes = [
   '/dashboard', '/pos', '/floor-plan', '/kitchen', '/tables', '/products', '/inventory',
