@@ -1,4 +1,6 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
+
+const SUPABASE_ORIGIN = 'https://lwnsdsncmlsroiswgoga.supabase.co';
 
 const protectedRoutes = [
   '/dashboard', '/pos', '/floor-plan', '/kitchen', '/tables', '/products', '/inventory',
@@ -9,7 +11,53 @@ const protectedRoutes = [
   '/settings/basic', '/system-health', '/subscription', '/subscriptions',
 ];
 
+async function mockUnauthenticatedBackend(page: Page) {
+  // Public smoke tests must never depend on the real Supabase project. The
+  // authenticated POS/dashboard suites already provide their own backend mocks.
+  // Keep this suite deterministic and focused on routing/login UI behavior.
+  await page.route(`${SUPABASE_ORIGIN}/auth/v1/**`, async (route) => {
+    const url = route.request().url();
+
+    if (url.includes('/auth/v1/token')) {
+      await route.fulfill({
+        status: 400,
+        contentType: 'application/json',
+        body: JSON.stringify({ error: 'invalid_grant', error_description: 'Invalid login credentials' }),
+      });
+      return;
+    }
+
+    if (url.includes('/auth/v1/session')) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ access_token: null, token_type: 'bearer', user: null }),
+      });
+      return;
+    }
+
+    if (url.includes('/auth/v1/user')) {
+      await route.fulfill({ status: 401, contentType: 'application/json', body: JSON.stringify({ message: 'No session' }) });
+      return;
+    }
+
+    await route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
+  });
+
+  await page.route(`${SUPABASE_ORIGIN}/rest/v1/**`, async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
+  });
+
+  await page.route(`${SUPABASE_ORIGIN}/storage/v1/**`, async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
+  });
+}
+
 test.describe('public application smoke', () => {
+  test.beforeEach(async ({ page }) => {
+    await mockUnauthenticatedBackend(page);
+  });
+
   test('login page renders without browser console errors', async ({ page }) => {
     const consoleErrors: string[] = [];
     page.on('console', (message) => {
