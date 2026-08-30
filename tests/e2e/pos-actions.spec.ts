@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 
 const SUPABASE_ORIGIN = 'https://nahptrsihcidcxkjzwdp.supabase.co';
 const TEST_USER_ID = '00000000-0000-0000-0000-000000000001';
-const BRANCH_ID = '00000000-0000-0000-000000000010';
+const BRANCH_ID = '00000000-0000-0000-0000-000000000010';
 const PRODUCT_ID = '00000000-0000-0000-0000-000000000020';
 const WAREHOUSE_ID = '00000000-0000-0000-0000-000000000030';
 const TABLE_ID = '00000000-0000-0000-0000-000000000040';
@@ -23,6 +23,30 @@ function makeSession() {
 async function mockPosBackend(page: Page) {
   rpcCalls = [];
   rpcPayloads = {};
+  let createdOrder = false;
+  const mockOrder = {
+    id: 'e2e-order-id',
+    branch_id: BRANCH_ID,
+    order_number: 'E2E-001',
+    order_type: 'takeaway',
+    status: 'open',
+    table_id: null,
+    customer_id: null,
+    guest_count: null,
+    notes: null,
+  };
+  const mockOrderItem = {
+    id: 'e2e-order-item-id',
+    order_id: 'e2e-order-id',
+    product_id: PRODUCT_ID,
+    quantity: 1,
+    unit_name: 'piece',
+    unit_price: 100,
+    discount_amount: 0,
+    bonus_quantity: 0,
+    total: 100,
+    notes: null,
+  };
   const session = makeSession();
   await page.route(`${SUPABASE_ORIGIN}/auth/v1/**`, async (route) => {
     const url = route.request().url();
@@ -41,14 +65,15 @@ async function mockPosBackend(page: Page) {
   await page.route(`${SUPABASE_ORIGIN}/rest/v1/inventory**`, async (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([{ product_id: PRODUCT_ID, quantity: 20 }]) }));
   await page.route(`${SUPABASE_ORIGIN}/rest/v1/product_components**`, async (r) => r.fulfill({ status: 200, contentType: 'application/json', body: '[]' }));
   await page.route(`${SUPABASE_ORIGIN}/rest/v1/dining_tables**`, async (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([diningTable]) }));
-  await page.route(`${SUPABASE_ORIGIN}/rest/v1/orders**`, async (r) => r.fulfill({ status: 200, contentType: 'application/json', body: '[]' }));
-  await page.route(`${SUPABASE_ORIGIN}/rest/v1/order_items**`, async (r) => r.fulfill({ status: 200, contentType: 'application/json', body: '[]' }));
+  await page.route(`${SUPABASE_ORIGIN}/rest/v1/orders**`, async (r) => r.fulfill({ status: 200, contentType: 'application/json', body: createdOrder ? JSON.stringify([mockOrder]) : '[]' }));
+  await page.route(`${SUPABASE_ORIGIN}/rest/v1/order_items**`, async (r) => r.fulfill({ status: 200, contentType: 'application/json', body: createdOrder ? JSON.stringify([mockOrderItem]) : '[]' }));
   await page.route(`${SUPABASE_ORIGIN}/rest/v1/order_kitchen_sends**`, async (r) => r.fulfill({ status: 200, contentType: 'application/json', body: '[]' }));
   await page.route(`${SUPABASE_ORIGIN}/rest/v1/kitchen_sends**`, async (r) => r.fulfill({ status: 200, contentType: 'application/json', body: '[]' }));
   await page.route(`${SUPABASE_ORIGIN}/rest/v1/rpc/**`, async (r) => {
     const name = new URL(r.request().url()).pathname.split('/').pop() || '';
     rpcCalls.push(name);
     try { rpcPayloads[name] = [...(rpcPayloads[name] || []), JSON.parse(r.request().postData() || '{}')]; } catch { rpcPayloads[name] = [...(rpcPayloads[name] || []), {}]; }
+    if (name === 'create_order') createdOrder = true;
     if (name === 'get_login_email') return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, email: fakeUser.email }) });
     if (name === 'record_login_success' || name === 'record_login_failure') return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true }) });
     if (name === 'get_active_shift') return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, open: false }) });
