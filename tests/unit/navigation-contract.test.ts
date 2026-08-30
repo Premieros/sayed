@@ -26,7 +26,7 @@ describe('navigation contract', () => {
   });
 
   it('keeps menu permissions explicit for protected navigation items', () => {
-    const publicMenuIds = new Set(['subscription']);
+    const publicMenuIds = new Set<string>();
     for (const item of MENU_ITEMS) {
       if (item.superAdminOnly || publicMenuIds.has(item.id)) continue;
       expect(item.permission, `${item.id} is missing a navigation permission`).toBeTruthy();
@@ -69,14 +69,15 @@ describe('Phase 4 — center discoverability', () => {
     }
   });
 
-  it('Manufacturing Center exposes raw materials, recipes, and production', () => {
-    const source = read('src/features/manufacturing/pages/ManufacturingCenterPage.tsx');
-    expect(source).toContain('raw_materials.view');
-    expect(source).toContain('recipes.view');
-    expect(source).toContain('production.view');
-    expect(sourceHasRoute(source, 'rawMaterials')).toBe(true);
-    expect(sourceHasRoute(source, 'recipes')).toBe(true);
-    expect(sourceHasRoute(source, 'production')).toBe(true);
+  it('Raw Materials and Recipes are exposed in the sidebar catalog', () => {
+    const raw = MENU_ITEMS.find((i) => i.id === 'raw-materials');
+    const recipe = MENU_ITEMS.find((i) => i.id === 'recipes');
+    expect(raw).toBeDefined();
+    expect(raw!.route).toBe(APP_ROUTES.rawMaterials);
+    expect(raw!.permission).toBe('raw_materials.view');
+    expect(recipe).toBeDefined();
+    expect(recipe!.route).toBe(APP_ROUTES.recipes);
+    expect(recipe!.permission).toBe('recipes.view');
   });
 
   it('Procurement Center exposes requests, RFQs, and receiving', () => {
@@ -108,10 +109,11 @@ describe('Phase 4 — feature discoverability', () => {
     return source.includes(`APP_ROUTES.${routeKey}`);
   }
 
-  it('Raw Materials is accessible from Manufacturing Center', () => {
-    const source = read('src/features/manufacturing/pages/ManufacturingCenterPage.tsx');
-    expect(sourceHasRoute(source, 'rawMaterials')).toBe(true);
-    expect(source).toContain('raw_materials.view');
+  it('Raw Materials is in the sidebar menu', () => {
+    const item = MENU_ITEMS.find((i) => i.id === 'raw-materials');
+    expect(item).toBeDefined();
+    expect(item!.route).toBe(APP_ROUTES.rawMaterials);
+    expect(item!.permission).toBe('raw_materials.view');
   });
 
   it('Inventory Units is in the sidebar menu', () => {
@@ -121,14 +123,11 @@ describe('Phase 4 — feature discoverability', () => {
     expect(item!.permission).toBe('raw_materials.view');
   });
 
-  it('Recipes are accessible from Manufacturing Center', () => {
-    const source = read('src/features/manufacturing/pages/ManufacturingCenterPage.tsx');
-    expect(sourceHasRoute(source, 'recipes')).toBe(true);
-  });
-
-  it('Production Orders are accessible from Manufacturing Center', () => {
-    const source = read('src/features/manufacturing/pages/ManufacturingCenterPage.tsx');
-    expect(sourceHasRoute(source, 'production')).toBe(true);
+  it('Recipes are in the sidebar menu', () => {
+    const item = MENU_ITEMS.find((i) => i.id === 'recipes');
+    expect(item).toBeDefined();
+    expect(item!.route).toBe(APP_ROUTES.recipes);
+    expect(item!.permission).toBe('recipes.view');
   });
 
   it('Warehouses are accessible from Inventory Center', () => {
@@ -172,7 +171,6 @@ describe('Phase 4 — command palette', () => {
     const expectedLabels = [
       'المواد الخام', 'Raw Materials',
       'الوصفات', 'Recipes',
-      'أوامر الإنتاج', 'Production Orders',
       'الجرد', 'Stock Counts',
       'التحويلات', 'Transfers',
       'المشتريات', 'Purchases',
@@ -210,7 +208,6 @@ describe('Phase 4 — no duplicate destinations', () => {
     const menuRoutes = new Set(MENU_ITEMS.map((i) => i.route));
     const centerFiles = [
       'src/features/inventory/pages/InventoryCenterPage.tsx',
-      'src/features/manufacturing/pages/ManufacturingCenterPage.tsx',
       'src/features/trade/pages/ProcurementCenterPage.tsx',
       'src/features/operations/pages/OperationsCenterPage.tsx',
     ];
@@ -233,7 +230,6 @@ describe('Phase 4 — no duplicate destinations', () => {
       APP_ROUTES.warehouses,
       APP_ROUTES.rawMaterials,
       APP_ROUTES.recipes,
-      APP_ROUTES.production,
       APP_ROUTES.transfers,
       APP_ROUTES.inventoryLedger,
       APP_ROUTES.stockCounts,
@@ -254,7 +250,6 @@ describe('Phase 4 — no duplicate destinations', () => {
       APP_ROUTES.branches,
       APP_ROUTES.floorPlan,
       APP_ROUTES.kitchenDisplay,
-      APP_ROUTES.wasteCenter,
       APP_ROUTES.costingCenter,
       APP_ROUTES.accounts,
       APP_ROUTES.payments,

@@ -9,8 +9,7 @@ export type Role =
   | 'branch_manager'
   | 'cashier'
   | 'warehouse_manager'
-  | 'accountant'
-  | 'production_manager';
+  | 'accountant';
 
 export interface AppUser {
   id: string;

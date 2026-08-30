@@ -58,7 +58,7 @@ describe('hasPermission', () => {
     expect(hasPermission('accountant', null, 'sales.export')).toBe(true);
     expect(hasPermission('accountant', null, 'reports.print')).toBe(true);
     expect(hasPermission('branch_manager', null, 'reports.export')).toBe(true);
-    expect(hasPermission('production_manager', null, 'products.import')).toBe(true);
+    expect(hasPermission('warehouse_manager', null, 'products.import')).toBe(true);
   });
 
   it('DB map overrides code defaults', () => {

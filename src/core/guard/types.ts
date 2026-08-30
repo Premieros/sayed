@@ -1,7 +1,6 @@
 export type OperationalActionKey =
   | 'purchase_create'
   | 'pos_checkout'
-  | 'production_create'
   | 'transfer_create'
   | 'stock_count_create'
   | 'product_create'

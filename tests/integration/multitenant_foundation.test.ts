@@ -21,7 +21,7 @@ describe.skipIf(!dbUrl)('Multi-tenant foundation', () => {
     await client.end().catch(() => {});
   });
 
-  it('creates an isolated organization, first branch, warehouse, owner membership, and trial atomically', async () => {
+  it('creates an isolated organization, first branch, warehouse, and owner membership atomically', async () => {
     await client.query('SET LOCAL ROLE anon');
 
     const result = await client.query(
@@ -47,7 +47,6 @@ describe.skipIf(!dbUrl)('Multi-tenant foundation', () => {
     expect(res.warehouse_id).toBeTruthy();
     expect(res.user_id).toBeTruthy();
     expect(res.membership_role).toBe('owner');
-    expect(res.trial_days).toBe(14);
 
     await client.query('SET LOCAL ROLE postgres');
 
@@ -72,15 +71,6 @@ describe.skipIf(!dbUrl)('Multi-tenant foundation', () => {
     expect(membership.rows).toHaveLength(1);
     expect(membership.rows[0].membership_role).toBe('owner');
     expect(membership.rows[0].is_active).toBe(true);
-
-    const subscription = await client.query(
-      `SELECT status, trial_ends_at > trial_starts_at AS valid_window
-       FROM public.branch_subscriptions
-       WHERE branch_id = $1`,
-      [res.branch_id],
-    );
-    expect(subscription.rows[0].status).toBe('trial');
-    expect(subscription.rows[0].valid_window).toBe(true);
 
     const isolation = await client.query(
       `SELECT count(*)::int AS count

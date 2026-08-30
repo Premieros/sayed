@@ -2,10 +2,10 @@ import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   Activity, AlertTriangle, ArrowLeftRight, BarChart3, BadgeDollarSign, Boxes, BookOpenText, Building2, Calculator, ChefHat,
-  ChevronDown, ClipboardCheck, CreditCard, Factory, FileSpreadsheet, FileText, FlaskConical,
+  ChevronDown, ClipboardCheck, FileSpreadsheet, FileText, FlaskConical,
   Globe, HandCoins, Landmark, Layers, LayoutDashboard, LogOut, Menu, Moon, NotebookPen,
   Package, Receipt, Scale, ScrollText, Settings, ShoppingCart, SlidersHorizontal, Sparkles, Store, Sun,
-  Tags, Timer, Trash2, Truck, UserCog, Users, Wallet, Warehouse, X,
+  Tags, Timer, Truck, UserCog, Users, Wallet, Warehouse, X,
 } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
 import { useTheme } from '../context/ThemeContext';
@@ -19,13 +19,11 @@ import { Logo } from './Logo';
 import { APP_ROUTES } from '@/core/navigation/routes';
 import { MENU_GROUPS, MENU_ITEMS, type MenuIcon, type MenuGroup } from '@/core/navigation/menu.config';
 import { CommandPalette, CommandPaletteTrigger } from './CommandPalette';
-import { SubscriptionBanner } from './subscription/SubscriptionBanner';
 import { OfflineStatusIndicator } from './OfflineStatusIndicator';
 import { ReturnContextBanner } from '@/core/guard/ReturnContextBanner';
 
 const ICONS: Record<MenuIcon, ReactNode> = {
   dashboard: <LayoutDashboard className="h-5 w-5" />,
-  subscription: <CreditCard className="h-5 w-5" />,
   pos: <ShoppingCart className="h-5 w-5" />,
   products: <Package className="h-5 w-5" />,
   categories: <Tags className="h-5 w-5" />,
@@ -34,7 +32,6 @@ const ICONS: Record<MenuIcon, ReactNode> = {
   recipes: <ChefHat className="h-5 w-5" />,
   inventory: <Boxes className="h-5 w-5" />,
   warehouses: <Warehouse className="h-5 w-5" />,
-  production: <Factory className="h-5 w-5" />,
   transfers: <ArrowLeftRight className="h-5 w-5" />,
   inventoryLedger: <BookOpenText className="h-5 w-5" />,
   stockCounts: <ClipboardCheck className="h-5 w-5" />,
@@ -42,7 +39,6 @@ const ICONS: Record<MenuIcon, ReactNode> = {
   stockValuation: <BadgeDollarSign className="h-5 w-5" />,
   lowStockAlerts: <AlertTriangle className="h-5 w-5" />,
   inventoryUnits: <Package className="h-5 w-5" />,
-  wasteCenter: <Trash2 className="h-5 w-5" />,
   kitchenDisplay: <ChefHat className="h-5 w-5" />,
   kitchenStations: <SlidersHorizontal className="h-5 w-5" />,
   costingCenter: <Calculator className="h-5 w-5" />,
@@ -61,7 +57,6 @@ const ICONS: Record<MenuIcon, ReactNode> = {
   shifts: <Timer className="h-5 w-5" />,
   reports: <BarChart3 className="h-5 w-5" />,
   users: <UserCog className="h-5 w-5" />,
-  subscriptionsAdmin: <CreditCard className="h-5 w-5" />,
   auditLog: <ScrollText className="h-5 w-5" />,
   settings: <Settings className="h-5 w-5" />,
   superAdmin: <SlidersHorizontal className="h-5 w-5 text-brand-500" />,
@@ -321,7 +316,6 @@ export function Layout({ children }: { children: ReactNode }) {
 
       {/* ── Main content: offset for header (pt) + sidebar (ms/me) ── */}
       <div className={`pt-[64px] ${ar ? 'lg:ms-[260px]' : 'lg:me-[260px]'} min-h-screen`}>
-        <SubscriptionBanner />
         <ReturnContextBanner />
         <main data-testid="app-main" className="min-h-[calc(100vh-64px)] bg-ui-page p-4 sm:p-6 lg:p-7">
           <div data-testid="design-content-surface" className="mx-auto min-h-[calc(100vh-64px)] w-full max-w-[1600px] space-y-5">

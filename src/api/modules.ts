@@ -11,6 +11,5 @@ export { manufacturing } from './domains/manufacturing';
 export { catalog } from './domains/catalog';
 export { accounting } from './domains/accounting';
 export { reporting } from './domains/reporting';
-export { subscriptions } from './domains/subscriptions';
 export { admin } from './domains/admin';
 export { branches } from './domains/branches';

@@ -294,34 +294,6 @@ export function validateActionPrerequisites(
       break;
     }
 
-    case 'production_create': {
-      if (!ctx.branchId && !isSuper) {
-        return {
-          allowed: false,
-          missingStep: PREREQUISITE_STEPS.select_branch,
-          reasonAr: 'يلزم تحديد الفرع لتنفيذ أوامر الإنتاج والتصنيع.',
-          reasonEn: 'Select branch to execute manufacturing orders.',
-        };
-      }
-      if (typeof ctx.warehousesCount === 'number' && ctx.warehousesCount === 0) {
-        return {
-          allowed: false,
-          missingStep: PREREQUISITE_STEPS.create_warehouse,
-          reasonAr: 'يلزم وجود مخزن معتمد لصرف الخامات واستلام المنتجات المصنعة.',
-          reasonEn: 'A warehouse is required to issue raw materials and receive manufactured goods.',
-        };
-      }
-      if (typeof ctx.recipesCount === 'number' && ctx.recipesCount === 0) {
-        return {
-          allowed: false,
-          missingStep: PREREQUISITE_STEPS.create_recipe,
-          reasonAr: 'لا توجد وصفات تصنيع (BOM) مسجلة لتنفيذ عملية الإنتاج.',
-          reasonEn: 'No manufacturing recipes found. Please create a recipe first.',
-        };
-      }
-      break;
-    }
-
     case 'transfer_create': {
       if (typeof ctx.warehousesCount === 'number' && ctx.warehousesCount < 2) {
         return {

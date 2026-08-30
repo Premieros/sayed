@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useState, useCallback, type React
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import * as api from '../api';
-import type { AppUser, SubscriptionStatus } from '../lib/types';
+import type { AppUser } from '../lib/types';
 
 const LOCAL_SESSION_KEY = 'premier_local_auth_session';
 
@@ -67,13 +67,11 @@ async function syncSuperAdminInDb(superUser: AppUser): Promise<void> {
 interface AuthContextValue {
   session: Session | null;
   user: AppUser | null;
-  subscription: SubscriptionStatus | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: { code: string; message: string } | null }>;
   signInWithUsername: (username: string, pin: string) => Promise<{ error: { code: string; message: string } | null }>;
   signOut: () => Promise<void>;
   refreshUser: () => Promise<void>;
-  refreshSubscription: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -105,7 +103,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return null;
   });
 
-  const [subscription, setSubscription] = useState<SubscriptionStatus | null>(null);
   const [loading, setLoading] = useState(true);
 
   function makeFallbackUser(s: Session): AppUser {
@@ -124,19 +121,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } as AppUser;
   }
 
-  const loadSubscriptionFor = useCallback(async (u: AppUser | null): Promise<void> => {
-    if (!u?.branch_id) {
-      setSubscription(null);
-      return;
-    }
-    try {
-      const { data } = await api.subscriptions.status({ p_branch_id: u.branch_id });
-      setSubscription(data as SubscriptionStatus | null);
-    } catch {
-      setSubscription(null);
-    }
-  }, []);
-
   const loadUser = useCallback(async (s: Session | null): Promise<void> => {
     if (!s) {
       const saved = localStorage.getItem(LOCAL_SESSION_KEY);
@@ -146,7 +130,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (parsed.user && parsed.session) {
             setUser(parsed.user);
             setSession(parsed.session);
-            loadSubscriptionFor(parsed.user).catch(() => {});
             return;
           }
         } catch {
@@ -154,7 +137,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       }
       setUser(null);
-      setSubscription(null);
       return;
     }
 
@@ -177,14 +159,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.warn('loadUser query error:', error.message);
         const fb = makeFallbackUser(s);
         setUser(fb);
-        loadSubscriptionFor(fb).catch(() => {});
         return;
       }
 
       if (data) {
         const u = data as AppUser;
         setUser(u);
-        loadSubscriptionFor(u).catch(() => {});
         return;
       }
 
@@ -202,19 +182,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (insertData) {
         const u = insertData as AppUser;
         setUser(u);
-        loadSubscriptionFor(u).catch(() => {});
       } else {
         const fb = makeFallbackUser(s);
         setUser(fb);
-        loadSubscriptionFor(fb).catch(() => {});
       }
     } catch (err) {
       console.warn('loadUser fallback:', err);
       const fb = makeFallbackUser(s);
       setUser(fb);
-      loadSubscriptionFor(fb).catch(() => {});
     }
-  }, [loadSubscriptionFor]);
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -387,19 +364,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await supabase.auth.signOut().catch(() => {});
     setUser(null);
     setSession(null);
-    setSubscription(null);
   };
 
   const refreshUser = async () => {
     await loadUser(session);
   };
 
-  const refreshSubscription = async () => {
-    await loadSubscriptionFor(user);
-  };
-
   return (
-    <AuthContext.Provider value={{ session, user, subscription, loading, signIn, signInWithUsername, signOut, refreshUser, refreshSubscription }}>
+    <AuthContext.Provider value={{ session, user, loading, signIn, signInWithUsername, signOut, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

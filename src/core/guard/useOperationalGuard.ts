@@ -91,30 +91,6 @@ export function useOperationalGuard() {
     [buildValidationContext, isSuper, can, workflow, location.pathname]
   );
 
-  const guardProduction = useCallback(
-    (
-      ctx: {
-        warehousesCount?: number;
-        recipesCount?: number;
-        formData?: Record<string, unknown>;
-      }
-    ): boolean => {
-      const valCtx = buildValidationContext({
-        ...ctx,
-        hasPermission: isSuper || can('production.manage'),
-      });
-      return workflow.validateAndProceed(
-        'production_create',
-        valCtx,
-        location.pathname,
-        'أوامر التشغيل والتصنيع',
-        'Unit Production Order',
-        ctx.formData
-      );
-    },
-    [buildValidationContext, isSuper, can, workflow, location.pathname]
-  );
-
   const guardTransfer = useCallback(
     (
       ctx: {
@@ -165,7 +141,6 @@ export function useOperationalGuard() {
     PREREQUISITE_STEPS,
     guardPurchase,
     guardPos,
-    guardProduction,
     guardTransfer,
     interceptDbError,
     effectiveBranch,

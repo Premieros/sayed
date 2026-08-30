@@ -95,19 +95,26 @@ describe.skipIf(skipLocal)('P0 security hardening (068)', () => {
     });
   });
 
-  describe('subscription_status execution grants (low: cross-branch info read)', () => {
-    it('revokes EXECUTE from anon and PUBLIC, keeps authenticated + service_role', async () => {
-      const result = await client.query<{ anon_exec: boolean; pub_exec: boolean; auth_exec: boolean; svc_exec: boolean }>(
-        `SELECT
-           has_function_privilege('anon', 'public.subscription_status(uuid)', 'EXECUTE') AS anon_exec,
-           has_function_privilege('public', 'public.subscription_status(uuid)', 'EXECUTE') AS pub_exec,
-           has_function_privilege('authenticated', 'public.subscription_status(uuid)', 'EXECUTE') AS auth_exec,
-           has_function_privilege('service_role', 'public.subscription_status(uuid)', 'EXECUTE') AS svc_exec`,
+  describe('subscription system removed', () => {
+    it('drops subscription/billing tables and never blocks order creation', async () => {
+      const tables = await client.query(
+        `SELECT table_name FROM information_schema.tables
+         WHERE table_schema = 'public'
+           AND table_name IN
+             ('subscription_plans','branch_subscriptions','subscription_payments',
+              'subscription_settings','plans','plan_prices','features','plan_features',
+              'subscriptions','branch_feature_overrides','subscription_events')`,
       );
-      expect(result.rows[0].anon_exec).toBe(false);
-      expect(result.rows[0].pub_exec).toBe(false);
-      expect(result.rows[0].auth_exec).toBe(true);
-      expect(result.rows[0].svc_exec).toBe(true);
+      expect(tables.rows).toHaveLength(0);
+
+      const guard = await client.query(
+        `SELECT count(*)::int AS c FROM pg_trigger t
+         JOIN pg_class c ON c.oid = t.tgrelid
+         JOIN pg_namespace n ON n.oid = c.relnamespace
+         WHERE n.nspname = 'public' AND c.relname = 'orders'
+           AND t.tgname = 'trg_guard_order_subscription'`,
+      );
+      expect(guard.rows[0].c).toBe(0);
     });
   });
 
