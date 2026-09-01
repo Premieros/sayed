@@ -4,7 +4,6 @@ import { rpc } from '../rpc';
 
 export const inventory = {
   adjustStock(p: { p_inventory_id: string; p_new_quantity: number; p_reason: string | null }): ApiResult<RpcResult> { return rpc('adjust_stock', p); },
-  adjustRawStock(p: { p_raw_material_id: string; p_branch_id: string; p_new_quantity: number; p_reason: string | null }): ApiResult<RpcResult> { return rpc('adjust_raw_stock', p); },
   createTransfer(p: { p_from_warehouse_id: string; p_to_warehouse_id: string; p_branch_id: string; p_items: { product_id: string; quantity: number; unit_cost: number }[]; p_reason: string | null; p_notes: string | null }): ApiResult<RpcResult> { return rpc('create_warehouse_transfer', p); },
   approveTransfer(p: { p_transfer_id: string }): ApiResult<RpcResult> { return rpc('approve_warehouse_transfer', p); },
   rejectTransfer(p: { p_transfer_id: string; p_reason: string | null }): ApiResult<RpcResult> { return rpc('reject_warehouse_transfer', p); },

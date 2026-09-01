@@ -10,9 +10,7 @@ describe.skipIf(skip)('Phase 1 — inventory units & order status split', () => 
   let client: pg.Client;
   const branchId = randomUUID();
   const whId = randomUUID();
-  const rmId = randomUUID();
   const readyUnitId = randomUUID();
-  const mfgUnitId = randomUUID();
   const productId = randomUUID();
   const orderId = randomUUID();
   const orderId2 = randomUUID();
@@ -39,7 +37,6 @@ describe.skipIf(skip)('Phase 1 — inventory units & order status split', () => 
 
     await client.query(`INSERT INTO public.branches (id, name) VALUES ($1, $2)`, [branchId, 'Phase1 Test']);
     await client.query(`INSERT INTO public.warehouses (id, name, branch_id) VALUES ($1, $2, $3)`, [whId, 'WH', branchId]);
-    await client.query(`INSERT INTO public.raw_materials (id, code, name, min_stock, default_cost, is_active, branch_id) VALUES ($1, 'RM-001', 'Flour', 0, 10, true, $2)`, [rmId, branchId]);
     await client.query(`INSERT INTO public.products (id, name, branch_id, product_type, sale_price, cost_price) VALUES ($1, $2, $3, 'ready', 25, 10)`, [productId, 'Burger', branchId]);
     await client.query(`INSERT INTO public.orders (id, order_number, branch_id, status) VALUES ($1, 'ORD-P1-001', $2, 'open')`, [orderId, branchId]);
     await client.query(`INSERT INTO public.orders (id, order_number, branch_id, status) VALUES ($1, 'ORD-P1-002', $2, 'open')`, [orderId2, branchId]);
@@ -116,18 +113,6 @@ describe.skipIf(skip)('Phase 1 — inventory units & order status split', () => 
       await client.query('ROLLBACK TO SAVEPOINT sp_pul_dup');
       await client.query('RELEASE SAVEPOINT sp_pul_dup');
     }
-  });
-
-  it('inventory_unit_recipes: recipe for manufactured unit', async () => {
-    await client.query(`INSERT INTO public.inventory_units (id, code, name, unit_type, branch_id) VALUES ($1, 'MU-001', 'Patty Mfg', 'manufactured', $2)`, [mfgUnitId, branchId]);
-    const recId = randomUUID();
-    await asAdmin(async () => {
-      await client.query(`INSERT INTO public.inventory_unit_recipes (id, unit_id, raw_material_id, quantity, wastage_percent) VALUES ($1, $2, $3, 1.5, 5)`, [recId, mfgUnitId, rmId]);
-      const rows = await q(`SELECT * FROM public.inventory_unit_recipes WHERE id = $1`, [recId]);
-      expect(rows.length).toBe(1);
-      expect(Number(rows[0].quantity)).toBe(1.5);
-      expect(Number(rows[0].wastage_percent)).toBe(5);
-    });
   });
 
   it('inventory_unit_batches: create and deduct stock', async () => {

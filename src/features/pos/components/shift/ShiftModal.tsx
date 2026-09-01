@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Timer, X, AlertCircle, CheckCircle2, Printer, FileText, ShoppingBag, Utensils, CreditCard } from 'lucide-react';
+import { Timer, X, AlertCircle, CheckCircle2, Printer, FileText, ShoppingBag, CreditCard } from 'lucide-react';
 import { useLanguage } from '@/context/LanguageContext';
 import { formatCurrency } from '@/lib/format';
 import * as api from '@/api';
@@ -187,20 +187,13 @@ export function ShiftModal({
                       </div>
                     )}
 
-                    {/* Products and Ingredients Count Indicators */}
-                    <div className="grid grid-cols-2 gap-2 pt-1 text-[11px]">
+                    {/* Products Count Indicator */}
+                    <div className="grid grid-cols-1 gap-2 pt-1 text-[11px]">
                       <div className="flex items-center gap-1.5 p-2 rounded-xl bg-ui-surface border border-ui-border">
                         <ShoppingBag className="h-4 w-4 text-ui-accent" />
                         <div>
                           <p className="font-bold text-ui-muted">{isAr ? 'أصناف مباعة' : 'Products sold'}</p>
                           <p className="font-black text-ui-text">{summary.productsSold.length} {isAr ? 'صنف' : 'items'}</p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1.5 p-2 rounded-xl bg-ui-surface border border-ui-border">
-                        <Utensils className="h-4 w-4 text-ui-success" />
-                        <div>
-                          <p className="font-bold text-ui-muted">{isAr ? 'مكونات مستهلكة' : 'Ingredients'}</p>
-                          <p className="font-black text-ui-text">{summary.ingredientsConsumed.length} {isAr ? 'مادة خام' : 'materials'}</p>
                         </div>
                       </div>
                     </div>

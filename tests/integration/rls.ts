@@ -13,7 +13,7 @@ import { randomUUID } from 'node:crypto';
 export const ADMIN_ROLES = new Set(['super_admin', 'owner']);
 export const PERM_ROLES = new Set(['branch_manager']); // granted accounts.manage in the fixture
 
-export const ROLES = ['super_admin', 'owner', 'branch_manager', 'cashier', 'warehouse_manager', 'accountant', 'production_manager'] as const;
+export const ROLES = ['super_admin', 'owner', 'branch_manager', 'cashier', 'warehouse_manager', 'accountant'] as const;
 export type RoleName = (typeof ROLES)[number];
 
 let seq = 0;
@@ -30,7 +30,6 @@ export interface RlsUsers {
   cashier_b: string;
   warehouse_manager: string;
   accountant: string;
-  production_manager: string;
 }
 
 export interface RlsIds {
@@ -46,8 +45,6 @@ export interface RlsIds {
   custB: string;
   suppA: string;
   suppB: string;
-  rm: string;
-  rm2: string;
   coaPoolA: string[];
   coaPoolB: string[];
   treasuryBankA: string;
@@ -129,7 +126,6 @@ export async function seedRlsFixture(client: pg.Client): Promise<RlsIds> {
   ids.custB = await ins(client, `INSERT INTO public.customers (name, branch_id) VALUES ('CustB', '${ids.branchB}')`);
   ids.suppA = await ins(client, `INSERT INTO public.suppliers (name, branch_id) VALUES ('SuppA', '${ids.branchA}')`);
   ids.suppB = await ins(client, `INSERT INTO public.suppliers (name, branch_id) VALUES ('SuppB', '${ids.branchB}')`);
-  ids.rm = await ins(client, `INSERT INTO public.raw_materials (code, name) VALUES ('${uniq('RM')}', 'RM')`);
 
   // The role-guard trigger reads auth.uid() and rejects inserts when the caller
   // is unknown. Seeding runs as postgres (no JWT), so disable it for the seed
@@ -151,7 +147,6 @@ export async function seedRlsFixture(client: pg.Client): Promise<RlsIds> {
     cashier_b: await user('cb@rls.test', 'Cashier B', 'cashier', ids.branchB),
     warehouse_manager: await user('wh@rls.test', 'Whouse Mgr', 'warehouse_manager', ids.branchA),
     accountant: await user('ac@rls.test', 'Accountant', 'accountant', ids.branchA),
-    production_manager: await user('pm@rls.test', 'Production Mgr', 'production_manager', ids.branchA),
   };
 
   await client.query('ALTER TABLE public.users ENABLE TRIGGER trg_users_role_guard');
@@ -165,14 +160,13 @@ export async function seedRlsFixture(client: pg.Client): Promise<RlsIds> {
      ($1, $4, 'member', true),
      ($1, $5, 'member', true),
      ($1, $6, 'member', true),
-      ($1, $7, 'member', true),
      ($8, $9, 'member', true),
      ($1, $10, 'member', true),
      ($8, $10, 'member', true),
      ($8, $2, 'member', true)`,
     [
       orgA, ids.users.owner, ids.users.branch_manager, ids.users.cashier,
-      ids.users.warehouse_manager, ids.users.accountant, ids.users.production_manager,
+      ids.users.warehouse_manager, ids.users.accountant,
       orgB, ids.users.cashier_b,
       ids.users.super_admin,
     ],
@@ -205,9 +199,6 @@ export async function seedRlsFixture(client: pg.Client): Promise<RlsIds> {
   }
   ids.coaPoolA = coaPoolA;
   ids.coaPoolB = coaPoolB;
-  // A second raw material for raw_material_inventory insert probes (UNIQUE on
-  // (raw_material_id, branch_id) would reject a repeat of ids.rm).
-  ids.rm2 = await ins(client, `INSERT INTO public.raw_materials (code, name) VALUES ('${uniq('RM')}', 'RM2')`);
 
   // Dedicated spec rows: one per branch, standalone (never referenced by the
   // child fixtures below), so UPDATE/DELETE probes cannot cascade.
@@ -236,10 +227,6 @@ export async function seedRlsFixture(client: pg.Client): Promise<RlsIds> {
       `INSERT INTO public.stock_transactions (product_id, warehouse_id, branch_id, transaction_type, reference_type, quantity, reason) VALUES ('${ids.prodB}', '${ids.whB}', '${ids.branchB}', 'adjustment', 'adjustment', 1, 'x')`);
   await row('inventory', `INSERT INTO public.inventory (product_id, warehouse_id, branch_id, quantity) VALUES ('${ids.prodA}', '${ids.whA}', '${ids.branchA}', 1)`,
       `INSERT INTO public.inventory (product_id, warehouse_id, branch_id, quantity) VALUES ('${ids.prodB}', '${ids.whB}', '${ids.branchB}', 1)`);
-  await row('production_orders', `INSERT INTO public.production_orders (order_number, product_id, branch_id, warehouse_id, quantity) VALUES ('${uniq('PO')}', '${ids.prodA}', '${ids.branchA}', '${ids.whA}', 1)`,
-      `INSERT INTO public.production_orders (order_number, product_id, branch_id, warehouse_id, quantity) VALUES ('${uniq('PO')}', '${ids.prodB}', '${ids.branchB}', '${ids.whB}', 1)`);
-  await row('recipes', `INSERT INTO public.recipes (product_id, branch_id, name, yield_quantity) VALUES ('${ids.prodA}', '${ids.branchA}', 'R', 1)`,
-      `INSERT INTO public.recipes (product_id, branch_id, name, yield_quantity) VALUES ('${ids.prodB}', '${ids.branchB}', 'R', 1)`);
   await row('warehouse_transfers', `INSERT INTO public.warehouse_transfers (transfer_number, from_warehouse_id, to_warehouse_id, branch_id, status) VALUES ('${uniq('WT')}', '${ids.whA}', '${ids.whB}', '${ids.branchA}', 'pending')`,
       `INSERT INTO public.warehouse_transfers (transfer_number, from_warehouse_id, to_warehouse_id, branch_id, status) VALUES ('${uniq('WT')}', '${ids.whA}', '${ids.whB}', '${ids.branchB}', 'pending')`);
   await row('chart_of_accounts', `INSERT INTO public.chart_of_accounts (branch_id, code, name, account_type) VALUES ('${ids.branchA}', '${uniq('RC')}', 'R', 'asset')`,
@@ -260,12 +247,6 @@ export async function seedRlsFixture(client: pg.Client): Promise<RlsIds> {
       `INSERT INTO public.treasury_transactions (branch_id, transaction_type, amount, reference_number) VALUES ('${ids.branchB}', 'deposit', 10, '${uniq('TT')}')`);
   await row('bank_reconciliations', `INSERT INTO public.bank_reconciliations (branch_id, treasury_account_id, statement_date, statement_balance, book_balance, difference, status) VALUES ('${ids.branchA}', '${ids.treasuryBankA}', CURRENT_DATE, 0, 0, 0, 'open')`,
       `INSERT INTO public.bank_reconciliations (branch_id, treasury_account_id, statement_date, statement_balance, book_balance, difference, status) VALUES ('${ids.branchB}', '${ids.treasuryBankB}', CURRENT_DATE, 0, 0, 0, 'open')`);
-  await row('raw_material_inventory', `INSERT INTO public.raw_material_inventory (raw_material_id, branch_id, quantity, avg_cost) VALUES ('${ids.rm2}', '${ids.branchA}', 5, 10)`,
-      `INSERT INTO public.raw_material_inventory (raw_material_id, branch_id, quantity, avg_cost) VALUES ('${ids.rm2}', '${ids.branchB}', 5, 10)`);
-  await row('raw_material_batches', `INSERT INTO public.raw_material_batches (raw_material_id, branch_id, quantity, unit_cost, source_type) VALUES ('${ids.rm}', '${ids.branchA}', 5, 10, 'opening')`,
-      `INSERT INTO public.raw_material_batches (raw_material_id, branch_id, quantity, unit_cost, source_type) VALUES ('${ids.rm}', '${ids.branchB}', 5, 10, 'opening')`);
-  await row('production_waste', `INSERT INTO public.production_waste (order_id, branch_id, raw_material_id, quantity) VALUES ('${(await client.query<{ id: string }>(`INSERT INTO public.production_orders (order_number, product_id, branch_id, warehouse_id, quantity) VALUES ('${uniq('PO')}', '${ids.prodA}', '${ids.branchA}', '${ids.whA}', 1) RETURNING id`)).rows[0].id}', '${ids.branchA}', '${ids.rm}', 1)`,
-      `INSERT INTO public.production_waste (order_id, branch_id, raw_material_id, quantity) VALUES ('${(await client.query<{ id: string }>(`INSERT INTO public.production_orders (order_number, product_id, branch_id, warehouse_id, quantity) VALUES ('${uniq('PO')}', '${ids.prodB}', '${ids.branchB}', '${ids.whB}', 1) RETURNING id`)).rows[0].id}', '${ids.branchB}', '${ids.rm}', 1)`);
   await row('audit_log', `INSERT INTO public.audit_log (user_id, user_email, action, entity, entity_id, branch_id) VALUES ('${ids.users.cashier}', 'ca@rls.test', 'test', 'sale', null, '${ids.branchA}')`,
       `INSERT INTO public.audit_log (user_id, user_email, action, entity, entity_id, branch_id) VALUES ('${ids.users.cashier_b}', 'cb@rls.test', 'test', 'sale', null, '${ids.branchB}')`);
   await row('journal_entries', `INSERT INTO public.journal_entries (entry_number, branch_id, entry_date, description) VALUES ('${uniq('JE')}', '${ids.branchA}', CURRENT_DATE, 'rls')`,
@@ -305,8 +286,6 @@ export async function seedRlsFixture(client: pg.Client): Promise<RlsIds> {
       `INSERT INTO public.shift_operations (shift_id, operation_type, amount, payment_method) VALUES ('${ids.shiftB}', 'opening', 0, 'cash')`);
   await child('warehouse_transfer_items', `INSERT INTO public.warehouse_transfer_items (transfer_id, product_id, quantity) VALUES ('${R.warehouse_transfers.own}', '${ids.prodA}', 1)`,
       `INSERT INTO public.warehouse_transfer_items (transfer_id, product_id, quantity) VALUES ('${R.warehouse_transfers.other}', '${ids.prodB}', 1)`);
-  await child('recipe_items', `INSERT INTO public.recipe_items (recipe_id, raw_material_id, quantity) VALUES ('${R.recipes.own}', '${ids.rm}', 1)`,
-      `INSERT INTO public.recipe_items (recipe_id, raw_material_id, quantity) VALUES ('${R.recipes.other}', '${ids.rm}', 1)`);
   await child('journal_entry_lines', `INSERT INTO public.journal_entry_lines (journal_entry_id, account_id, debit, credit) VALUES ('${ids.jeA}', '${ids.coaCashA}', 0, 10)`,
       `INSERT INTO public.journal_entry_lines (journal_entry_id, account_id, debit, credit) VALUES ('${ids.jeB}', '${ids.coaCashB}', 0, 10)`);
   await child('bank_statement_lines', `INSERT INTO public.bank_statement_lines (reconciliation_id, statement_date, amount) VALUES ('${R.bank_reconciliations.own}', CURRENT_DATE, 100)`,

@@ -87,7 +87,6 @@ export function ImportExportCenterPage() {
       const [
         prodsRes,
         catsRes,
-        compsRes,
         suppsRes,
         custsRes,
         whsRes,
@@ -96,7 +95,6 @@ export function ImportExportCenterPage() {
       ] = await Promise.all([
         Promise.resolve(supabase.from('products').select('*')).catch(() => ({ data: [], error: null })),
         Promise.resolve(supabase.from('categories').select('*')).catch(() => ({ data: [], error: null })),
-        Promise.resolve(supabase.from('raw_materials').select('*')).catch(() => ({ data: [], error: null })),
         Promise.resolve(supabase.from('suppliers').select('*')).catch(() => ({ data: [], error: null })),
         Promise.resolve(supabase.from('customers').select('*')).catch(() => ({ data: [], error: null })),
         Promise.resolve(supabase.from('warehouses').select('*')).catch(() => ({ data: [], error: null })),
@@ -121,7 +119,6 @@ export function ImportExportCenterPage() {
 
       const prodsList = ((prodsRes as { data: Record<string, unknown>[] })?.data || []);
       const catsList = ((catsRes as { data: Record<string, unknown>[] })?.data || []);
-      const compsList = ((compsRes as { data: Record<string, unknown>[] })?.data || []);
       const suppsList = ((suppsRes as { data: Record<string, unknown>[] })?.data || []);
       const custsList = ((custsRes as { data: Record<string, unknown>[] })?.data || []);
       const usersList = ((usersRes as { data: Record<string, unknown>[] })?.data || []);
@@ -140,13 +137,7 @@ export function ImportExportCenterPage() {
           name: String(c.name || ''),
           name_en: c.name_en ? String(c.name_en) : undefined,
         })),
-        existingComponents: compsList.map((c) => ({
-          id: String(c.id || ''),
-          sku: String(c.code || c.sku || c.name || ''),
-          name: String(c.name || ''),
-          unit: String(c.unit || c.description || 'قطعة'),
-          cost: Number(c.default_cost ?? c.cost_price ?? 0),
-        })),
+        existingComponents: [],
         existingSuppliers: suppsList.map((s) => ({
           id: String(s.id || ''),
           code: s.code ? String(s.code) : undefined,
@@ -509,8 +500,8 @@ export function ImportExportCenterPage() {
           title={isAr ? 'مركز الاستيراد والتصدير الموحد' : 'Unified Import & Export Center'}
           description={
             isAr
-              ? 'المنظومة المركزية الشاملة لجميع عمليات إكسل: استيراد وتصدير الأصناف والمواد الخام والوصفات والمشتريات مع التحقق الصارم من العلاقات والصلاحيات'
-              : 'Enterprise Excel engine: Import & export catalog, BOM recipes, purchases, and stock with strict relational integrity'
+              ? 'المنظومة المركزية الشاملة لجميع عمليات إكسل: استيراد وتصدير الأصناف والمشتريات والمخزون مع التحقق الصارم من العلاقات والصلاحيات'
+              : 'Enterprise Excel engine: Import & export catalog, purchases, and stock with strict relational integrity'
           }
           actions={
             <div className="flex items-center gap-3">
@@ -862,18 +853,14 @@ export function ImportExportCenterPage() {
                   </div>
                 </div>
 
-                {/* Grouped Summary Preview (e.g. for Recipes BOM & Purchases) */}
+                {/* Grouped Summary Preview (e.g. for Purchases) */}
                 {validationSummary.groupedSummary && validationSummary.groupedSummary.length > 0 && (
                   <DesignPanel className="p-4 border-l-4 border-primary space-y-3 bg-muted/10">
                     <div className="flex items-center justify-between">
                       <h4 className="font-semibold text-sm text-foreground flex items-center gap-2">
                         <UtensilsCrossed className="w-4 h-4 text-primary" />
                         <span>
-                          {selectedEntity === 'recipes'
-                            ? isAr
-                              ? `معاينة تجميع الوصفات (${validationSummary.groupedSummary.length} منتجات مجمعة بنموذج One Row Per Component)`
-                              : `Grouped Recipes Preview (${validationSummary.groupedSummary.length} BOM Recipes)`
-                            : isAr
+                          {isAr
                             ? `معاينة الفواتير المجمعة (${validationSummary.groupedSummary.length} فواتير شراء)`
                             : `Grouped Purchase Orders (${validationSummary.groupedSummary.length} POs)`}
                         </span>
@@ -890,9 +877,7 @@ export function ImportExportCenterPage() {
                             <strong className="text-foreground">{grp.id}</strong> — {grp.name}
                           </div>
                           <Badge variant="default" className="text-xs shrink-0">
-                            {selectedEntity === 'recipes'
-                              ? `${grp.count} ${isAr ? 'مكونات' : 'items'}`
-                              : `${grp.count} ${isAr ? 'أصناف' : 'lines'}`}
+                            {`${grp.count} ${isAr ? 'أصناف' : 'lines'}`}
                           </Badge>
                         </div>
                       ))}
@@ -1243,7 +1228,6 @@ export function ImportExportCenterPage() {
                   <Button
                     onClick={() => {
                       if (selectedEntity === 'products') window.location.hash = '/products';
-                      else if (selectedEntity === 'recipes') window.location.hash = '/recipes';
                       else if (selectedEntity === 'purchases') window.location.hash = '/purchases';
                       else setActiveTab('logs');
                     }}

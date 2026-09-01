@@ -421,36 +421,6 @@ export function CostingCenterPage() {
               </div>
             )}
 
-            {(detail.recipe_items?.length || 0) > 0 && (
-              <div>
-                <h3 className="text-sm font-bold text-ui-text mb-2">{t('recipeItems')}</h3>
-                <div className="overflow-x-auto rounded-ui-lg border border-ui-border">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="bg-ui-page-alt text-start text-xs text-ui-subtle">
-                        <th className="px-3 py-2">{t('item')}</th>
-                        <th className="px-3 py-2">{t('quantity')}</th>
-                        <th className="px-3 py-2">{t('wastagePercent')}</th>
-                        <th className="px-3 py-2">{t('unitCost')}</th>
-                        <th className="px-3 py-2">{t('total')}</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {detail.recipe_items!.map((c) => (
-                        <tr key={c.raw_material_id} className="border-t border-ui-border">
-                          <td className="px-3 py-2">{c.raw_material_name}</td>
-                          <td className="px-3 py-2">{formatNumber(c.quantity)}</td>
-                          <td className="px-3 py-2">{formatNumber(c.wastage_percent, 1)}%</td>
-                          <td className="px-3 py-2">{money(c.unit_cost)}</td>
-                          <td className="px-3 py-2">{money(c.line_cost)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-
             {(detail.history?.length || 0) > 0 && (
               <div>
                 <h3 className="text-sm font-bold text-ui-text mb-2">{t('costHistory')}</h3>

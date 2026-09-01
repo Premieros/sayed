@@ -4,11 +4,11 @@ const SUPABASE_ORIGIN = 'https://nahptrsihcidcxkjzwdp.supabase.co';
 
 const protectedRoutes = [
   '/dashboard', '/pos', '/floor-plan', '/kitchen', '/tables', '/products', '/inventory',
-  '/warehouses', '/raw-materials', '/recipes', '/production', '/transfers', '/inventory-ledger',
+  '/warehouses', '/transfers', '/inventory-ledger',
   '/branches', '/purchases', '/customers', '/suppliers', '/expenses', '/sales', '/shifts',
   '/reports', '/financial-reports', '/accounting', '/accounts', '/payments', '/journal',
   '/treasury', '/reconciliation', '/users', '/employees', '/audit-log', '/settings',
-  '/settings/basic', '/system-health', '/subscription', '/subscriptions',
+  '/settings/basic', '/system-health',
 ];
 
 async function mockUnauthenticatedBackend(page: Page) {

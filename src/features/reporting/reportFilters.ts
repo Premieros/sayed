@@ -9,13 +9,11 @@ export type ReportType =
   | 'sales_by_product'
   | 'detailed_invoices'
   | 'component_consumption'
-  | 'recipe_costs'
   | 'top_consumed_components'
   | 'top_consumed_products'
   | 'low_stock'
   | 'cashier_performance'
-  | 'returns'
-  | 'production_waste';
+  | 'returns';
 
 export type ReportFilterKey =
   | 'warehouse'
@@ -60,9 +58,9 @@ export const REPORT_FILTER_KEYS: ReportFilterKey[] = [
 
 export const ALL_REPORT_TYPES: ReportType[] = [
   'sales', 'sales_by_payment', 'sales_by_employee', 'sales_by_product', 'detailed_invoices',
-  'purchases', 'expenses', 'profit', 'inventory', 'component_consumption', 'recipe_costs',
+  'purchases', 'expenses', 'profit', 'inventory', 'component_consumption',
   'top_consumed_components', 'top_consumed_products', 'low_stock',
-  'cashier_performance', 'returns', 'production_waste',
+  'cashier_performance', 'returns',
 ];
 
 export const REPORT_FILTER_DIMS: Record<ReportType, ReportFilterKey[]> = {
@@ -76,19 +74,17 @@ export const REPORT_FILTER_DIMS: Record<ReportType, ReportFilterKey[]> = {
   profit: ['order_type', 'warehouse', 'cashier', 'customer', 'payment_method', 'status'],
   inventory: ['warehouse', 'product', 'category'],
   component_consumption: ['warehouse', 'product', 'category'],
-  recipe_costs: ['product', 'category'],
   top_consumed_components: ['warehouse', 'product', 'category'],
   top_consumed_products: ['order_type', 'warehouse', 'cashier', 'customer', 'product', 'category'],
   low_stock: ['warehouse', 'product', 'category'],
   cashier_performance: ['warehouse', 'cashier'],
   returns: ['order_type', 'warehouse', 'cashier', 'customer', 'payment_method', 'status'],
-  production_waste: ['warehouse', 'product'],
 };
 
 export const DATE_DRIVEN_REPORTS = new Set<ReportType>([
   'sales', 'sales_by_payment', 'sales_by_employee', 'sales_by_product', 'detailed_invoices',
   'purchases', 'expenses', 'profit', 'component_consumption', 'top_consumed_components', 'top_consumed_products',
-  'cashier_performance', 'returns', 'production_waste',
+  'cashier_performance', 'returns',
 ]);
 
 export const ORDER_TYPE_OPTIONS: readonly string[] = ['dine_in', 'takeaway', 'delivery', 'drive_thru'];

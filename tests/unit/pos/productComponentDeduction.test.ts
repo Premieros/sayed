@@ -27,7 +27,6 @@ describe('اختبار إنقاص مخزون المنتجات ومكوناتها
           { unit_id: 'unit-patty', unit_name: 'Beef Patty', unit_type: 'manufactured', quantity: 3 },
           { unit_id: 'unit-sauce', unit_name: 'Signature Sauce', unit_type: 'manufactured', quantity: 6 },
         ],
-        raw_materials_deducted: [],
         total_cost: 45.0,
         errors: [],
       },
@@ -73,7 +72,6 @@ describe('اختبار إنقاص مخزون المنتجات ومكوناتها
           { unit_id: 'unit-milk-cup', unit_name: 'Steamed Milk', unit_type: 'ready', quantity: 2 },
           { unit_id: 'unit-croissant', unit_name: 'Butter Croissant', unit_type: 'ready', quantity: 1 },
         ],
-        raw_materials_deducted: [],
         total_cost: 28.5,
         errors: [],
       },
@@ -128,14 +126,13 @@ describe('اختبار إنقاص مخزون المنتجات ومكوناتها
     expect(result.errors).toEqual([]);
   });
 
-  it('يضمن عدم استهلاك المواد الخام مباشرة عند البيع (المواد الخام تستهلك فقط عبر أوامر التصنيع)', async () => {
+  it('لا يحتوي نتيجة البيع على أي بُعد للمواد الخام (المواد الخام أُزيلت مع النظام الفرعي للتصنيع)', async () => {
     rpcMock.mockResolvedValue({
       data: {
         success: true,
         units_deducted: [
           { unit_id: 'unit-cake-slice', unit_name: 'Cake Slice', unit_type: 'manufactured', quantity: 1 },
         ],
-        raw_materials_deducted: [],
         errors: [],
       },
       error: null,
@@ -147,7 +144,7 @@ describe('اختبار إنقاص مخزون المنتجات ومكوناتها
       [{ product_id: 'prod-cake', quantity: 1 }],
     );
 
-    expect(result.raw_materials_deducted).toEqual([]);
+    expect(Object.keys(result).sort()).toEqual(['errors', 'units_deducted']);
     expect(result.units_deducted[0].unit_name).toBe('Cake Slice');
   });
 });

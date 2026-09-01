@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Download, TrendingUp, ShoppingCart, Receipt, Package, BarChart3, CreditCard, Users, FileText, List, Layers, TrendingDown, AlertTriangle, FileDown, Printer, UserCheck, RotateCcw, Trash2 } from 'lucide-react';
-import { supabase, costing } from '@/api';
+import { Download, TrendingUp, ShoppingCart, Receipt, Package, BarChart3, CreditCard, Users, List, Layers, TrendingDown, AlertTriangle, FileDown, Printer, UserCheck, RotateCcw } from 'lucide-react';
+import { supabase } from '@/api';
 import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/context/AuthContext';
 import { PageHeader, Card } from '@/components/PageHeader';
@@ -23,7 +23,7 @@ import { useSettings } from '@/context/SettingsContext';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, PieChart, Pie, Cell, Legend } from 'recharts';
 import { applySalesFilters, applySaleItemFilters, applyPurchaseFilters, applyExpenseFilters, applyProductScopedFilters, REPORT_FILTER_DIMS, DATE_DRIVEN_REPORTS, ORDER_TYPE_OPTIONS, PAYMENT_METHOD_OPTIONS, SALE_STATUS_OPTIONS, type ReportFilters, type ReportFilterKey, type EqBuilder } from '../reportFilters';
 
-type ReportType = 'sales' | 'purchases' | 'expenses' | 'profit' | 'inventory' | 'sales_by_payment' | 'sales_by_employee' | 'sales_by_product' | 'detailed_invoices' | 'component_consumption' | 'recipe_costs' | 'top_consumed_components' | 'top_consumed_products' | 'low_stock' | 'cashier_performance' | 'returns' | 'production_waste';
+type ReportType = 'sales' | 'purchases' | 'expenses' | 'profit' | 'inventory' | 'sales_by_payment' | 'sales_by_employee' | 'sales_by_product' | 'detailed_invoices' | 'component_consumption' | 'top_consumed_components' | 'top_consumed_products' | 'low_stock' | 'cashier_performance' | 'returns';
 
 type FinancialReportType = 'trial_balance' | 'ledger' | 'income' | 'balance_sheet' | 'ar_aging' | 'ap_aging' | 'aging_summary' | 'cash_flow' | 'party_statement';
 
@@ -414,30 +414,6 @@ export function ReportsPage({ controlledReportType, onReportTypeChange }: Report
         setData(rows);
         setChartData(rows.slice(0, 10).map((p) => ({ name: String(p.name), value: Number(p.quantity) })));
         setSummary({ total: rows.length, count: rows.length });
-      } else if (reportType === 'recipe_costs') {
-        // Manufacturing model (recipes -> recipe_items -> raw_materials), via
-        // the branch-scoped get_costing_overview RPC (074). Supersedes the
-        // legacy product_components BOM report. Actual recipe cost is the
-        // branch-scoped recipe cost computed by the RPC.
-        const res = await costing.getOverview({ p_branch_id: effectiveBranchFilter });
-        if (res.error) { setData([]); setChartData([]); setSummary({ total: 0, count: 0 }); return; }
-        const catName = filters.category
-          ? options.categories.find((c) => c.id === filters.category)?.name ?? filters.category
-          : '';
-        const rows = (res.data || [])
-          .filter((r) => r.recipe_item_count > 0)
-          .filter((r) => !filters.product || r.product_id === filters.product)
-          .filter((r) => !catName || r.category_name === catName)
-          .map((r) => ({
-            [lang === 'ar' ? 'المنتج' : 'Product']: r.product_name,
-            [lang === 'ar' ? 'تكلفة الوصفة' : 'Recipe Cost']: Number(r.actual_cost),
-            [lang === 'ar' ? 'سعر البيع' : 'Sale Price']: Number(r.sale_price),
-            [lang === 'ar' ? 'الهامش' : 'Margin']: Number(r.sale_price) - Number(r.actual_cost),
-          }))
-          .sort((a, b) => Number(Object.values(b)[3]) - Number(Object.values(a)[3]));
-        setData(rows);
-        setChartData(rows.slice(0, 10).map((r) => ({ name: String(Object.values(r)[0]), value: Number(Object.values(r)[3]) })));
-        setSummary({ total: rows.reduce((s, r) => s + Number(Object.values(r)[1]), 0), count: rows.length });
       } else if (reportType === 'low_stock') {
         let lowStockQuery = supabase.from('inventory').select('quantity, product:products(name, barcode, low_stock_threshold, product_type), warehouse:warehouses(name)');
         if (effectiveBranchFilter) lowStockQuery = lowStockQuery.eq('branch_id', effectiveBranchFilter);
@@ -505,26 +481,6 @@ export function ReportsPage({ controlledReportType, onReportTypeChange }: Report
         setData(rows);
         setChartData([]);
         setSummary({ total: rows.reduce((s, r) => s + Number(Object.values(r)[4] || 0), 0), count: rows.length });
-      } else if (reportType === 'production_waste') {
-        let q = supabase.from('waste_entries').select('id, created_at, quantity, unit_cost, total_cost, reason, product:products(name), branch:warehouses(name)').gte('created_at', fromTs).lte('created_at', toTs);
-        if (effectiveBranchFilter) q = q.eq('branch_id', effectiveBranchFilter);
-        const { data: waste } = await q;
-        const rows = (waste || []).map((w: Record<string, unknown>) => {
-          const product = w.product as { name?: string } | null;
-          const branch = w.branch as { name?: string } | null;
-          return {
-            [lang === 'ar' ? 'المنتج' : 'Product']: product?.name || '-',
-            [lang === 'ar' ? 'التاريخ' : 'Date']: formatDate(w.created_at as string, lang),
-            [lang === 'ar' ? 'الكمية' : 'Quantity']: Number(w.quantity),
-            [lang === 'ar' ? 'تكلفة الوحدة' : 'Unit Cost']: Number(w.unit_cost),
-            [lang === 'ar' ? 'التكلفة الإجمالية' : 'Total Cost']: Number(w.total_cost),
-            [lang === 'ar' ? 'السبب' : 'Reason']: w.reason || '-',
-            [lang === 'ar' ? 'المستودع' : 'Warehouse']: branch?.name || '-',
-          };
-        });
-        setData(rows);
-        setChartData(rows.slice(0, 10).map((r) => ({ name: String(Object.values(r)[0]), value: Number(Object.values(r)[4]) })));
-        setSummary({ total: rows.reduce((s, r) => s + Number(Object.values(r)[4]), 0), count: rows.length });
       }
     } finally { setLoading(false); }
   }
@@ -554,18 +510,16 @@ export function ReportsPage({ controlledReportType, onReportTypeChange }: Report
     { key: 'profit', label: t('profitReport'), icon: <BarChart3 className="w-4 h-4" /> },
     { key: 'inventory', label: t('inventoryReport'), icon: <Package className="w-4 h-4" /> },
     { key: 'component_consumption', label: t('componentConsumptionReport'), icon: <Layers className="w-4 h-4" /> },
-    { key: 'recipe_costs', label: t('recipeCostReport'), icon: <FileText className="w-4 h-4" /> },
     { key: 'top_consumed_components', label: t('topConsumedComponentsReport'), icon: <TrendingDown className="w-4 h-4" /> },
     { key: 'top_consumed_products', label: t('topConsumedProductsReport'), icon: <Package className="w-4 h-4" /> },
     { key: 'low_stock', label: t('lowStockReport'), icon: <AlertTriangle className="w-4 h-4" /> },
     { key: 'cashier_performance', label: t('cashierPerformanceReport'), icon: <UserCheck className="w-4 h-4" /> },
     { key: 'returns', label: t('returnsReport'), icon: <RotateCcw className="w-4 h-4" /> },
-    { key: 'production_waste', label: t('productionWasteReport'), icon: <Trash2 className="w-4 h-4" /> },
   ];
 
   const isPie = reportType === 'expenses' || reportType === 'profit' || reportType === 'sales_by_payment';
 
-  const moneyKeys = [lang === 'ar' ? 'الإجمالي' : 'Total', lang === 'ar' ? 'المبلغ' : 'Amount', lang === 'ar' ? 'الربح' : 'Profit', lang === 'ar' ? 'المبيعات' : 'Sales', lang === 'ar' ? 'المشتريات' : 'Purchases', lang === 'ar' ? 'المصروفات' : 'Expenses', lang === 'ar' ? 'الإيراد' : 'Revenue', lang === 'ar' ? 'المدفوع' : 'Paid', lang === 'ar' ? 'متوسط الفاتورة' : 'Avg Invoice', lang === 'ar' ? 'متوسط الفاتورة' : 'Avg Order', lang === 'ar' ? 'تكلفة الاستهلاك' : 'Consumption Cost', lang === 'ar' ? 'تكلفة الوصفة' : 'Recipe Cost', lang === 'ar' ? 'سعر البيع' : 'Sale Price', lang === 'ar' ? 'الهامش' : 'Margin', lang === 'ar' ? 'تكلفة الوحدة' : 'Unit Cost', lang === 'ar' ? 'التكلفة الإجمالية' : 'Total Cost'];
+  const moneyKeys = [lang === 'ar' ? 'الإجمالي' : 'Total', lang === 'ar' ? 'المبلغ' : 'Amount', lang === 'ar' ? 'الربح' : 'Profit', lang === 'ar' ? 'المبيعات' : 'Sales', lang === 'ar' ? 'المشتريات' : 'Purchases', lang === 'ar' ? 'المصروفات' : 'Expenses', lang === 'ar' ? 'الإيراد' : 'Revenue', lang === 'ar' ? 'المدفوع' : 'Paid', lang === 'ar' ? 'متوسط الفاتورة' : 'Avg Invoice', lang === 'ar' ? 'متوسط الفاتورة' : 'Avg Order', lang === 'ar' ? 'تكلفة الاستهلاك' : 'Consumption Cost'];
 
   const showDate = DATE_DRIVEN_REPORTS.has(reportType);
   const allColumns = data.length > 0 ? Object.keys(data[0]) : [];

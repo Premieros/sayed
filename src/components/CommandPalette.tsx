@@ -2,10 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   AlertTriangle, ArrowLeftRight, BadgeDollarSign, BarChart3, BookOpenText, Building2,
-  Calculator, ChefHat, ClipboardCheck, ClipboardList, CreditCard, Factory, FileSpreadsheet,
-  FileText, FlaskConical, HandCoins, Landmark, Layers, LayoutDashboard, Package,
+  Calculator, ChefHat, ClipboardCheck, ClipboardList, FileSpreadsheet,
+  FileText, HandCoins, Landmark, Layers, LayoutDashboard, Package,
   Receipt, Scale, ScrollText, Settings, ShoppingCart, SlidersHorizontal,
-  Store, Tags, Timer, Trash2, Truck, UserCog, Users, Wallet, Warehouse,
+  Store, Tags, Timer, Truck, UserCog, Users, Wallet, Warehouse,
 } from 'lucide-react';
 import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/context/AuthContext';
@@ -14,16 +14,16 @@ import { APP_ROUTES } from '@/core/navigation/routes';
 import { MENU_ITEMS } from '@/core/navigation/menu.config';
 
 const ICON_MAP: Record<string, typeof Package> = {
-  dashboard: LayoutDashboard, subscription: CreditCard, pos: ShoppingCart, products: Package,
-  categories: Tags, components: Layers, rawMaterials: FlaskConical, recipes: ChefHat,
-  inventory: Warehouse, warehouses: Warehouse, production: Factory, transfers: ArrowLeftRight,
+  dashboard: LayoutDashboard, pos: ShoppingCart, products: Package,
+  categories: Tags, components: Layers,
+  inventory: Warehouse, warehouses: Warehouse, transfers: ArrowLeftRight,
   inventoryLedger: BookOpenText, stockCounts: ClipboardCheck, inventoryBatches: Layers,
   stockValuation: BadgeDollarSign, lowStockAlerts: AlertTriangle, inventoryUnits: Package,
-  wasteCenter: Trash2, kitchenDisplay: ChefHat, kitchenStations: SlidersHorizontal,
+  kitchenDisplay: ChefHat, kitchenStations: SlidersHorizontal,
   costingCenter: Calculator, branches: Store, purchases: Truck, customers: Users,
   suppliers: Building2, expenses: Receipt, accounts: Landmark, payments: HandCoins,
   journal: ClipboardList, treasury: Wallet, reconciliation: Scale, financialReports: FileSpreadsheet,
-  sales: FileText, shifts: Timer, reports: BarChart3, users: UserCog, subscriptionsAdmin: CreditCard,
+  sales: FileText, shifts: Timer, reports: BarChart3, users: UserCog,
   auditLog: ScrollText, settings: Settings,
 };
 
@@ -69,12 +69,9 @@ const LABEL_MAP: Record<string, { ar: string; en: string }> = {
   auditLog: { ar: 'سجل التدقيق', en: 'Audit Log' },
   settings: { ar: 'الإعدادات', en: 'Settings' },
   superAdmin: { ar: 'لوحة المدير العام', en: 'Super Admin Console' },
-  mySubscription: { ar: 'اشتراكي', en: 'My Subscription' },
-  subscriptionsAdmin: { ar: 'إدارة الاشتراكات', en: 'Subscriptions' },
   orders: { ar: 'الطلبات', en: 'Orders' },
   kitchenDisplay: { ar: 'شاشة المطبخ', en: 'Kitchen Display' },
   kitchenStations: { ar: 'محطات المطبخ', en: 'Kitchen Stations' },
-  wasteCenter: { ar: 'مركز الهالك', en: 'Waste Center' },
   costingCenter: { ar: 'مركز التكلفة', en: 'Costing Center' },
 };
 
@@ -111,9 +108,6 @@ function buildCommandItems(): CommandItem[] {
   }
 
   const extras: Omit<CommandItem, 'icon'>[] = [
-    { id: 'cmd-raw-materials', route: APP_ROUTES.rawMaterials, labelAr: 'المواد الخام', labelEn: 'Raw Materials', section: 'Manufacturing', sectionAr: 'التصنيع', descriptionAr: 'تعريف المواد الخام ومتابعة الأرصدة', descriptionEn: 'Manage raw materials and stock', permission: 'raw_materials.view' },
-    { id: 'cmd-recipes', route: APP_ROUTES.recipes, labelAr: 'الوصفات والمكونات', labelEn: 'Recipes & Components', section: 'Manufacturing', sectionAr: 'التصنيع', descriptionAr: 'إدارة الوصفات ومكونات المنتجات', descriptionEn: 'Manage recipes and product components', permission: 'recipes.view' },
-    { id: 'cmd-production', route: APP_ROUTES.production, labelAr: 'أوامر الإنتاج', labelEn: 'Production Orders', section: 'Manufacturing', sectionAr: 'التصنيع', descriptionAr: 'إنشاء ومتابعة أوامر الإنتاج', descriptionEn: 'Create and monitor production orders', permission: 'production.view' },
     { id: 'cmd-transfers', route: APP_ROUTES.transfers, labelAr: 'التحويلات المخزنية', labelEn: 'Warehouse Transfers', section: 'Inventory', sectionAr: 'المخزون', descriptionAr: 'نقل الأصناف بين المستودعات والفروع', descriptionEn: 'Move stock between warehouses', permission: 'inventory.transfers' },
     { id: 'cmd-ledger', route: APP_ROUTES.inventoryLedger, labelAr: 'دفتر حركة المخزون', labelEn: 'Inventory Ledger', section: 'Inventory', sectionAr: 'المخزون', descriptionAr: 'تتبع كل حركة دخول وخروج وتحويل', descriptionEn: 'Trace stock movements', permission: 'inventory.ledger.view' },
     { id: 'cmd-stock-counts', route: APP_ROUTES.stockCounts, labelAr: 'الجرد والتسويات', labelEn: 'Stock Counts & Adjustments', section: 'Inventory', sectionAr: 'المخزون', descriptionAr: 'الجرد الفعلي وتسويات المخزون', descriptionEn: 'Physical counts and stock adjustments', permission: 'inventory.manage' },
@@ -128,7 +122,7 @@ function buildCommandItems(): CommandItem[] {
   ];
 
   for (const e of extras) {
-    items.push({ ...e, icon: ICON_MAP[e.route === APP_ROUTES.rawMaterials ? 'rawMaterials' : e.route === APP_ROUTES.recipes ? 'recipes' : e.route === APP_ROUTES.production ? 'production' : e.route === APP_ROUTES.transfers ? 'transfers' : e.route === APP_ROUTES.inventoryLedger ? 'inventoryLedger' : e.route === APP_ROUTES.stockCounts ? 'stockCounts' : e.route === APP_ROUTES.inventoryBatches ? 'inventoryBatches' : e.route === APP_ROUTES.stockValuation ? 'stockValuation' : e.route === APP_ROUTES.lowStockAlerts ? 'lowStockAlerts' : e.route === APP_ROUTES.purchaseRequests ? 'purchases' : e.route === APP_ROUTES.rfqs ? 'purchases' : e.route === APP_ROUTES.receiving ? 'purchases' : e.route === APP_ROUTES.floorPlan ? 'pos' : e.route === APP_ROUTES.systemHealth ? 'settings' : 'products'] ?? Package });
+    items.push({ ...e, icon: ICON_MAP[e.route === APP_ROUTES.transfers ? 'transfers' : e.route === APP_ROUTES.inventoryLedger ? 'inventoryLedger' : e.route === APP_ROUTES.stockCounts ? 'stockCounts' : e.route === APP_ROUTES.inventoryBatches ? 'inventoryBatches' : e.route === APP_ROUTES.stockValuation ? 'stockValuation' : e.route === APP_ROUTES.lowStockAlerts ? 'lowStockAlerts' : e.route === APP_ROUTES.purchaseRequests ? 'purchases' : e.route === APP_ROUTES.rfqs ? 'purchases' : e.route === APP_ROUTES.receiving ? 'purchases' : e.route === APP_ROUTES.floorPlan ? 'pos' : e.route === APP_ROUTES.systemHealth ? 'settings' : 'products'] ?? Package });
   }
 
   return items;

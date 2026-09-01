@@ -2,22 +2,14 @@ import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Activity,
-  BadgeCheck,
   Building2,
   Check,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
-  Clock,
-  CreditCard,
-  Edit2,
-  ExternalLink,
   FileSpreadsheet,
-  Layers,
   Loader2,
   Plus,
-  QrCode,
-  Receipt,
   RefreshCw,
   ShieldAlert,
   ShieldCheck,
@@ -26,12 +18,11 @@ import {
   Store,
   Trash2,
   Users,
-  X,
   XCircle,
   Zap,
 } from 'lucide-react';
-import { supabase, admin, subscriptions as subApi } from '@/api';
-import type { SubscriptionPlan, SubscriptionStatus, BranchSettings } from '@/lib/types';
+import { supabase, admin } from '@/api';
+import type { BranchSettings } from '@/lib/types';
 import { useLanguage } from '@/context/LanguageContext';
 import { useToast } from '@/components/Toast';
 import { useSettings } from '@/context/SettingsContext';
@@ -41,10 +32,9 @@ import { DesignSearch } from '@/components/design/DesignSearch';
 import { Button } from '@/components/Button';
 import { Card } from '@/components/PageHeader';
 import { Input, Textarea, Select } from '@/components/Input';
-import { Modal } from '@/components/Modal';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { RolesTab } from './RolesTab';
-import { formatCurrency, formatDate, formatDateTime } from '@/lib/format';
+import { formatDate, formatDateTime } from '@/lib/format';
 import { logAudit } from '@/lib/audit';
 
 interface TenantStats {
@@ -57,7 +47,6 @@ interface TenantStats {
   user_count: number;
   total_branches: number;
   active_branches: number;
-  has_active_subscription: boolean;
 }
 
 interface TenantUser {
@@ -74,40 +63,6 @@ interface TenantUser {
   created_at: string;
 }
 
-interface BranchRow {
-  id: string;
-  name: string;
-  name_en: string | null;
-  is_active: boolean;
-}
-
-interface PaymentRow {
-  id: string;
-  branch_id: string;
-  plan_id: string | null;
-  amount: number;
-  billing_period: 'monthly' | 'yearly';
-  reference: string | null;
-  receipt_url: string | null;
-  status: 'pending' | 'approved' | 'rejected';
-  submitted_at: string;
-  rejection_reason: string | null;
-}
-
-interface SubscriptionSettings {
-  instapay_id: string | null;
-  beneficiary_name: string | null;
-  qr_code_url: string | null;
-  instructions_ar: string | null;
-  instructions_en: string | null;
-  trial_days: number;
-  warning_days: number;
-  grace_days: number;
-  require_receipt: boolean;
-  allow_monthly: boolean;
-  allow_yearly: boolean;
-}
-
 interface AuditLogRow {
   id: string;
   action: string;
@@ -117,67 +72,13 @@ interface AuditLogRow {
   details: unknown;
 }
 
-function normalizeFeatures(features: unknown): string[] {
-  if (!features) return [];
-  if (Array.isArray(features)) {
-    return features.map((f) => {
-      if (typeof f === 'string') return f;
-      if (typeof f === 'object' && f !== null) {
-        if ('key' in f && typeof (f as { key: unknown }).key === 'string') return (f as { key: string }).key;
-        if ('name' in f && typeof (f as { name: unknown }).name === 'string') return (f as { name: string }).name;
-        if ('id' in f && typeof (f as { id: unknown }).id === 'string') return (f as { id: string }).id;
-      }
-      return String(f);
-    });
-  }
-  if (typeof features === 'string') {
-    try {
-      const parsed = JSON.parse(features);
-      return normalizeFeatures(parsed);
-    } catch {
-      return features.split(',').map((s) => s.trim()).filter(Boolean);
-    }
-  }
-  if (typeof features === 'object' && features !== null) {
-    return Object.entries(features)
-      .filter(([, val]) => Boolean(val))
-      .map(([k]) => k);
-  }
-  return [];
-}
-
-const AVAILABLE_FEATURES = [
-  { id: 'pos', ar: 'نقطة البيع والمبيعات (POS)', en: 'POS & Sales' },
-  { id: 'kds', ar: 'شاشة المطبخ (KDS)', en: 'Kitchen Display (KDS)' },
-  { id: 'inventory', ar: 'المخزون والمستودعات', en: 'Inventory & Warehouses' },
-  { id: 'recipes', ar: 'الوصفات والتصنيع', en: 'Recipes & Manufacturing' },
-  { id: 'purchases', ar: 'المشتريات والموردين', en: 'Purchasing & Suppliers' },
-  { id: 'costing', ar: 'حساب التكلفة والربحية', en: 'Costing & Profitability' },
-  { id: 'accounting', ar: 'المحاسبة والقيود المالية', en: 'Accounting & Journal' },
-  { id: 'multi_branch', ar: 'تعدد الفروع والربط المركزي', en: 'Multi-Branch Support' },
-  { id: 'reports', ar: 'التقارير التحليلية المتقدمة', en: 'Advanced Reports' },
-  { id: 'audit_logs', ar: 'سجل العمليات والتدقيق', en: 'Audit & Security Logs' },
-  { id: 'tables', ar: 'إدارة الطاولات والصالة', en: 'Floor Plan & Tables' },
-  { id: 'employees', ar: 'إدارة الموظفين والصلاحيات', en: 'Staff & Roles Management' },
-];
-
-type SuperTab =
-  | 'tenants'
-  | 'subscriptions'
-  | 'general'
-  | 'branches_override'
-  | 'roles'
-  | 'users_audit'
-  | 'health';
-
-type SubscriptionsSubTab = 'plans' | 'gateway' | 'payments' | 'branch_subs';
+type SuperTab = 'tenants' | 'general' | 'branches_override' | 'roles' | 'users_audit' | 'health';
 
 interface SuperAdminConsoleProps {
   defaultTab?: SuperTab;
-  defaultSubTab?: SubscriptionsSubTab;
 }
 
-export function SuperAdminConsolePage({ defaultTab, defaultSubTab }: SuperAdminConsoleProps = {}) {
+export function SuperAdminConsolePage({ defaultTab }: SuperAdminConsoleProps = {}) {
   const [searchParams] = useSearchParams();
   const { lang } = useLanguage();
   const { show } = useToast();
@@ -186,7 +87,6 @@ export function SuperAdminConsolePage({ defaultTab, defaultSubTab }: SuperAdminC
   const { branches } = useBranches();
 
   const queryTab = searchParams.get('tab') as SuperTab | null;
-  const querySubTab = searchParams.get('subTab') as SubscriptionsSubTab | null;
 
   const [activeTab, setActiveTab] = useState<SuperTab>(defaultTab || queryTab || 'tenants');
 
@@ -195,45 +95,11 @@ export function SuperAdminConsolePage({ defaultTab, defaultSubTab }: SuperAdminC
   const [expandedOrg, setExpandedOrg] = useState<string | null>(null);
   const [loadingTenants, setLoadingTenants] = useState(false);
 
-  // Subscriptions & Plans state
-  const [subTab, setSubTab] = useState<SubscriptionsSubTab>(defaultSubTab || querySubTab || 'plans');
-
   useEffect(() => {
-    if (queryTab && ['tenants', 'subscriptions', 'store_settings', 'branch_custom', 'users_audit', 'roles', 'health'].includes(queryTab)) {
+    if (queryTab && ['tenants', 'store_settings', 'branch_custom', 'users_audit', 'roles', 'health'].includes(queryTab)) {
       setActiveTab(queryTab);
     }
-    if (querySubTab && ['plans', 'gateway', 'payments', 'branch_subs'].includes(querySubTab)) {
-      setSubTab(querySubTab);
-    }
-  }, [queryTab, querySubTab]);
-  const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
-  const [payments, setPayments] = useState<PaymentRow[]>([]);
-  const [gatewaySettings, setGatewaySettings] = useState<SubscriptionSettings | null>(null);
-  const [branchStatuses, setBranchStatuses] = useState<Record<string, SubscriptionStatus>>({});
-  const [loadingSubs, setLoadingSubs] = useState(false);
-  const [savingGateway, setSavingGateway] = useState(false);
-
-  // Plan editing modal
-  const [planModalOpen, setPlanModalOpen] = useState(false);
-  const [editingPlan, setEditingPlan] = useState<Partial<SubscriptionPlan> | null>(null);
-  const [savingPlan, setSavingPlan] = useState(false);
-  const [deletePlanConfirmOpen, setDeletePlanConfirmOpen] = useState(false);
-  const [deletingPlanId, setDeletingPlanId] = useState<string | null>(null);
-
-  // Payment review modal
-  const [reviewingId, setReviewingId] = useState<string | null>(null);
-  const [rejectModalOpen, setRejectModalOpen] = useState(false);
-  const [rejectPaymentId, setRejectPaymentId] = useState<string | null>(null);
-  const [rejectReason, setRejectReason] = useState('');
-  const [viewReceiptModal, setViewReceiptModal] = useState<string | null>(null);
-
-  // Manual Branch override modal
-  const [branchOverrideModalOpen, setBranchOverrideModalOpen] = useState(false);
-  const [selectedBranchForOverride, setSelectedBranchForOverride] = useState<BranchRow | null>(null);
-  const [overridePlanId, setOverridePlanId] = useState<string>('');
-  const [overrideStatus, setOverrideStatus] = useState<string>('active');
-  const [overrideDaysToAdd, setOverrideDaysToAdd] = useState<number>(30);
-  const [savingBranchOverride, setSavingBranchOverride] = useState(false);
+  }, [queryTab]);
 
   // Enterprise Store Settings state
   const [generalForm, setGeneralForm] = useState<Record<string, string | number | null | undefined>>({});
@@ -279,19 +145,10 @@ export function SuperAdminConsolePage({ defaultTab, defaultSubTab }: SuperAdminC
 
       const { data: branchData } = await supabase.from('branches').select('id, organization_id, is_active');
       const { data: memberData } = await supabase.from('organization_members').select('organization_id, user_id, is_active');
-      const { data: subsData } = await supabase.from('branch_subscriptions').select('branch_id, status, current_period_ends_at');
-
-      const now = new Date().toISOString();
-      const activeBranchIds = new Set(
-        (subsData || [])
-          .filter((s) => s.status === 'active' && s.current_period_ends_at && s.current_period_ends_at > now)
-          .map((s) => s.branch_id)
-      );
 
       const computed: TenantStats[] = (orgs || []).map((org) => {
         const orgBranches = (branchData || []).filter((b) => b.organization_id === org.id);
         const orgMembers = (memberData || []).filter((m) => m.organization_id === org.id && m.is_active);
-        const hasSub = orgBranches.some((b) => activeBranchIds.has(b.id));
 
         return {
           organization_id: org.id,
@@ -303,7 +160,6 @@ export function SuperAdminConsolePage({ defaultTab, defaultSubTab }: SuperAdminC
           user_count: orgMembers.length,
           total_branches: orgBranches.length,
           active_branches: orgBranches.filter((b) => b.is_active ?? true).length,
-          has_active_subscription: hasSub,
         };
       });
 
@@ -316,41 +172,7 @@ export function SuperAdminConsolePage({ defaultTab, defaultSubTab }: SuperAdminC
   }, []);
 
   // ─────────────────────────────────────────────────────────────
-  // 2. Load Subscriptions & Plans
-  // ─────────────────────────────────────────────────────────────
-  const loadSubscriptions = useCallback(async () => {
-    setLoadingSubs(true);
-    try {
-      const [pRes, payRes, sRes] = await Promise.all([
-        subApi.listPlans(),
-        supabase
-          .from('subscription_payments')
-          .select('id,branch_id,plan_id,amount,billing_period,reference,receipt_url,status,submitted_at,rejection_reason')
-          .order('submitted_at', { ascending: false }),
-        supabase.rpc('subscription_settings_get'),
-      ]);
-
-      if (pRes.data) setPlans(pRes.data);
-      if (payRes.data) setPayments(payRes.data as PaymentRow[]);
-      if (sRes.data) setGatewaySettings(sRes.data as SubscriptionSettings);
-
-      const statusMap: Record<string, SubscriptionStatus> = {};
-      await Promise.all(
-        branches.map(async (b) => {
-          const res = await subApi.status({ p_branch_id: b.id });
-          if (res.data) statusMap[b.id] = res.data;
-        })
-      );
-      setBranchStatuses(statusMap);
-    } catch {
-      // Ignored
-    } finally {
-      setLoadingSubs(false);
-    }
-  }, [branches]);
-
-  // ─────────────────────────────────────────────────────────────
-  // 3. Load Users & Audit Logs
+  // 2. Load Users & Audit Logs
   // ─────────────────────────────────────────────────────────────
   const loadUsersAndAudit = useCallback(async () => {
     setLoadingUsersAudit(true);
@@ -440,9 +262,8 @@ export function SuperAdminConsolePage({ defaultTab, defaultSubTab }: SuperAdminC
   // Tab change trigger
   useEffect(() => {
     if (activeTab === 'tenants') void loadTenants();
-    if (activeTab === 'subscriptions') void loadSubscriptions();
     if (activeTab === 'users_audit') void loadUsersAndAudit();
-  }, [activeTab, loadTenants, loadSubscriptions, loadUsersAndAudit]);
+  }, [activeTab, loadTenants, loadUsersAndAudit]);
 
   // ─────────────────────────────────────────────────────────────
   // 5. Actions Handlers
@@ -557,183 +378,6 @@ export function SuperAdminConsolePage({ defaultTab, defaultSubTab }: SuperAdminC
     show(ar ? 'تم حذف البيانات التجريبية بنجاح' : 'Demo data wiped successfully', 'success');
   };
 
-  const handleSaveGateway = async () => {
-    if (!gatewaySettings) return;
-    setSavingGateway(true);
-    const { data, error } = await supabase.rpc('subscription_settings_update', {
-      p_instapay_id: gatewaySettings.instapay_id,
-      p_beneficiary_name: gatewaySettings.beneficiary_name,
-      p_qr_code_url: gatewaySettings.qr_code_url,
-      p_instructions_ar: gatewaySettings.instructions_ar,
-      p_instructions_en: gatewaySettings.instructions_en,
-      p_trial_days: gatewaySettings.trial_days,
-      p_warning_days: gatewaySettings.warning_days,
-      p_grace_days: gatewaySettings.grace_days,
-      p_require_receipt: gatewaySettings.require_receipt,
-      p_allow_monthly: gatewaySettings.allow_monthly,
-      p_allow_yearly: gatewaySettings.allow_yearly,
-    });
-    setSavingGateway(false);
-    if (error || !(data as { success?: boolean })?.success) {
-      show((data as { error?: string })?.error || error?.message || (ar ? 'فشل حفظ إعدادات الدفع' : 'Failed to save settings'), 'error');
-      return;
-    }
-    show(ar ? 'تم حفظ إعدادات بوابة InstaPay بنجاح' : 'Gateway settings saved', 'success');
-  };
-
-  const reviewPayment = async (id: string, approve: boolean, reason?: string) => {
-    setReviewingId(id);
-    let success = false;
-    let errMessage = '';
-
-    try {
-      const { data, error } = await supabase.rpc('review_instapay_payment', {
-        p_payment_id: id,
-        p_approve: approve,
-        p_rejection_reason: approve ? null : reason || (ar ? 'لم يتم اعتماد التحويل' : 'Payment rejected'),
-      });
-      if (!error && (data as { success?: boolean })?.success) {
-        success = true;
-      } else {
-        errMessage = (data as { error?: string })?.error || error?.message || '';
-      }
-    } catch {
-      // RPC fallback below
-    }
-
-    if (!success) {
-      try {
-        // Fallback: direct table updates
-        const { data: payment } = await supabase
-          .from('subscription_payments')
-          .select('*')
-          .eq('id', id)
-          .single();
-
-        const updatePayload: Record<string, unknown> = {
-          status: approve ? 'approved' : 'rejected',
-          rejection_reason: approve ? null : reason || (ar ? 'لم يتم اعتماد التحويل' : 'Payment rejected'),
-          reviewed_at: new Date().toISOString(),
-        };
-
-        const { error: pErr } = await supabase
-          .from('subscription_payments')
-          .update(updatePayload)
-          .eq('id', id);
-
-        if (!pErr) {
-          if (approve && payment?.branch_id) {
-            const addDays = payment.billing_period === 'yearly' ? 365 : 30;
-            const newExpiry = new Date(Date.now() + addDays * 24 * 60 * 60 * 1000).toISOString();
-            await subApi.updateBranchSubscription({
-              branch_id: payment.branch_id,
-              plan_id: payment.plan_id || null,
-              status: 'active',
-              current_period_ends_at: newExpiry,
-            });
-          }
-          success = true;
-        } else {
-          errMessage = pErr.message;
-        }
-      } catch (fbErr) {
-        errMessage = fbErr instanceof Error ? fbErr.message : 'Review failed';
-      }
-    }
-
-    setReviewingId(null);
-    setRejectModalOpen(false);
-    setRejectPaymentId(null);
-    setRejectReason('');
-
-    if (!success) {
-      show(errMessage || 'Review failed', 'error');
-      return;
-    }
-    show(approve ? (ar ? 'تم اعتماد الاشتراك وتفعيل الفرع بنجاح' : 'Payment approved and branch activated') : (ar ? 'تم رفض التحويل' : 'Payment rejected'), 'success');
-    void loadSubscriptions();
-  };
-
-  const handleSavePlan = async () => {
-    if (!editingPlan || !editingPlan.name_ar) {
-      show(ar ? 'يرجى إدخال اسم الباقة بالعربية' : 'Plan name in Arabic is required', 'error');
-      return;
-    }
-    setSavingPlan(true);
-    const res = await subApi.savePlan(editingPlan as Partial<SubscriptionPlan> & { name_ar: string });
-    setSavingPlan(false);
-    if (res.error) {
-      show(res.error.message || 'Failed to save plan', 'error');
-      return;
-    }
-    show(ar ? 'تم حفظ الباقة بنجاح' : 'Plan saved successfully', 'success');
-    setPlanModalOpen(false);
-    setEditingPlan(null);
-    void loadSubscriptions();
-  };
-
-  const handleDeletePlan = async () => {
-    if (!deletingPlanId) return;
-    const res = await subApi.deletePlan(deletingPlanId);
-    setDeletePlanConfirmOpen(false);
-    setDeletingPlanId(null);
-    if (res.error) {
-      show(res.error.message || 'Failed to delete plan', 'error');
-      return;
-    }
-    show(ar ? 'تم حذف الباقة بنجاح' : 'Plan deleted', 'success');
-    void loadSubscriptions();
-  };
-
-  const handleSaveBranchOverride = async () => {
-    if (!selectedBranchForOverride) return;
-    setSavingBranchOverride(true);
-    let success = false;
-    let errMessage = '';
-
-    try {
-      const { data, error } = await supabase.rpc('override_branch_subscription', {
-        p_branch_id: selectedBranchForOverride.id,
-        p_plan_id: overridePlanId || null,
-        p_status: overrideStatus,
-        p_days_to_add: overrideDaysToAdd,
-      });
-      if (!error && (data as { success?: boolean })?.success) {
-        success = true;
-      } else {
-        errMessage = (data as { error?: string })?.error || error?.message || '';
-      }
-    } catch {
-      // Direct fallback
-    }
-
-    if (!success) {
-      try {
-        const days = Number(overrideDaysToAdd) || 30;
-        const newExpiry = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
-        await subApi.updateBranchSubscription({
-          branch_id: selectedBranchForOverride.id,
-          plan_id: overridePlanId || null,
-          status: overrideStatus,
-          current_period_ends_at: newExpiry,
-        });
-        success = true;
-      } catch (err) {
-        errMessage = err instanceof Error ? err.message : 'Override failed';
-      }
-    }
-
-    setSavingBranchOverride(false);
-    if (!success) {
-      show(errMessage || 'Override failed', 'error');
-      return;
-    }
-    show(ar ? 'تم تحديث اشتراك الفرع بنجاح' : 'Branch subscription updated', 'success');
-    setBranchOverrideModalOpen(false);
-    setSelectedBranchForOverride(null);
-    void loadSubscriptions();
-  };
-
   const runHealthChecks = useCallback(async () => {
     setHealthRunning(true);
     const targets: { key: string; label: string; table?: string }[] = [
@@ -743,9 +387,6 @@ export function SuperAdminConsolePage({ defaultTab, defaultSubTab }: SuperAdminC
       { key: 'users_tbl', label: ar ? 'جدول المستخدمين (Users)' : 'Users', table: 'users' },
       { key: 'orders_tbl', label: ar ? 'جدول الطلبات (Orders)' : 'Orders', table: 'orders' },
       { key: 'sales_tbl', label: ar ? 'جدول المبيعات (Sales)' : 'Sales', table: 'sales' },
-      { key: 'subscriptions', label: ar ? 'جدول الاشتراكات (Subscriptions)' : 'Subscriptions', table: 'branch_subscriptions' },
-      { key: 'plans_tbl', label: ar ? 'باقات الأسعار (Plans)' : 'Plans', table: 'subscription_plans' },
-      { key: 'payments_tbl', label: ar ? 'مدفوعات التحويل (Payments)' : 'Payments', table: 'subscription_payments' },
     ];
     setHealthResults(targets.map((t) => ({ key: t.key, label: t.label, status: 'checking', detail: '...' })));
 
@@ -769,7 +410,6 @@ export function SuperAdminConsolePage({ defaultTab, defaultSubTab }: SuperAdminC
   // Tab definitions
   const TABS: { key: SuperTab; label: string; icon: React.ReactNode }[] = [
     { key: 'tenants', label: ar ? 'المستأجرون والمنظمات' : 'Tenants & Organizations', icon: <Building2 className="w-4 h-4" /> },
-    { key: 'subscriptions', label: ar ? 'الاشتراكات والأسعار والمدفوعات' : 'Subscriptions & Pricing', icon: <CreditCard className="w-4 h-4" /> },
     { key: 'general', label: ar ? 'إعدادات المنشأة والمتجر المركزية' : 'Enterprise Settings', icon: <Store className="w-4 h-4" /> },
     { key: 'branches_override', label: ar ? 'تخصيصات الفروع والبيانات التجريبية' : 'Branch Overrides & Demo', icon: <SlidersHorizontal className="w-4 h-4" /> },
     { key: 'roles', label: ar ? 'مصفوفة الأدوار والصلاحيات' : 'RBAC Roles & Matrix', icon: <ShieldCheck className="w-4 h-4" /> },
@@ -782,7 +422,6 @@ export function SuperAdminConsolePage({ defaultTab, defaultSubTab }: SuperAdminC
     activeTenants: tenants.filter((t) => t.is_active).length,
     totalBranches: tenants.reduce((sum, t) => sum + (t.total_branches ?? 0), 0),
     totalUsers: tenants.reduce((sum, t) => sum + (t.user_count ?? 0), 0),
-    withSub: tenants.filter((t) => t.has_active_subscription).length,
   };
 
   return (
@@ -805,8 +444,8 @@ export function SuperAdminConsolePage({ defaultTab, defaultSubTab }: SuperAdminC
             </div>
             <p className="text-xs text-ui-subtle">
               {ar
-                ? 'مركز إدارة جميع المنظمات، باقات الاشتراكات وبوابة الدفع، الإعدادات المركزية، الصلاحيات، وسجل التدقيق'
-                : 'Centralized master hub for tenants, subscriptions, enterprise settings, permissions, and audit logs'}
+                ? 'مركز إدارة جميع المنظمات، الإعدادات المركزية، الصلاحيات، وسجل التدقيق'
+                : 'Centralized master hub for tenants, enterprise settings, permissions, and audit logs'}
             </p>
           </div>
         </div>
@@ -817,12 +456,11 @@ export function SuperAdminConsolePage({ defaultTab, defaultSubTab }: SuperAdminC
             size="sm"
             onClick={() => {
               if (activeTab === 'tenants') void loadTenants();
-              if (activeTab === 'subscriptions') void loadSubscriptions();
               if (activeTab === 'users_audit') void loadUsersAndAudit();
               if (activeTab === 'health') void runHealthChecks();
             }}
           >
-            <RefreshCw className={`w-4 h-4 ${loadingTenants || loadingSubs || loadingUsersAudit || healthRunning ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-4 h-4 ${loadingTenants || loadingUsersAudit || healthRunning ? 'animate-spin' : ''}`} />
             <span className="hidden sm:inline">{ar ? 'تحديث البيانات' : 'Refresh'}</span>
           </Button>
         </div>
@@ -851,13 +489,12 @@ export function SuperAdminConsolePage({ defaultTab, defaultSubTab }: SuperAdminC
       {/* ───────────────────────────────────────────────────────────── */}
       {activeTab === 'tenants' && (
         <div className="space-y-5 animate-fade-in">
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
             {[
               { label: ar ? 'إجمالي المنظمات' : 'Total Tenants', value: tenantStats.totalTenants, icon: <Building2 className="w-5 h-5 text-brand-500" /> },
               { label: ar ? 'المنظمات النشطة' : 'Active Tenants', value: tenantStats.activeTenants, icon: <CheckCircle2 className="w-5 h-5 text-ui-success" /> },
               { label: ar ? 'إجمالي الفروع' : 'Total Branches', value: tenantStats.totalBranches, icon: <Store className="w-5 h-5 text-blue-500" /> },
               { label: ar ? 'إجمالي المستخدمين' : 'Total Users', value: tenantStats.totalUsers, icon: <Users className="w-5 h-5 text-purple-500" /> },
-              { label: ar ? 'المشتركون الفعليون' : 'With Active Sub', value: tenantStats.withSub, icon: <BadgeCheck className="w-5 h-5 text-amber-500" /> },
             ].map((s) => (
               <Card key={s.label} className="p-3.5 flex items-center justify-between">
                 <div>
@@ -923,17 +560,6 @@ export function SuperAdminConsolePage({ defaultTab, defaultSubTab }: SuperAdminC
                       >
                         {t.is_active ? (ar ? 'نشط' : 'Active') : (ar ? 'معطل' : 'Disabled')}
                       </span>
-                      {t.has_active_subscription ? (
-                        <span className="inline-flex items-center gap-1 text-xs text-ui-success font-medium bg-ui-success-soft px-2 py-0.5 rounded-md">
-                          <CheckCircle2 className="w-3.5 h-3.5" />
-                          {ar ? 'اشتراك سارٍ' : 'Subscribed'}
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 text-xs text-ui-warning font-medium bg-ui-warning-soft px-2 py-0.5 rounded-md">
-                          <Clock className="w-3.5 h-3.5" />
-                          {ar ? 'بدون اشتراك' : 'No Sub'}
-                        </span>
-                      )}
                       <Button
                         size="sm"
                         variant="outline"
@@ -982,363 +608,7 @@ export function SuperAdminConsolePage({ defaultTab, defaultSubTab }: SuperAdminC
       )}
 
       {/* ───────────────────────────────────────────────────────────── */}
-      {/* TAB 2: الاشتراكات والأسعار وبوابة InstaPay                      */}
-      {/* ───────────────────────────────────────────────────────────── */}
-      {activeTab === 'subscriptions' && (
-        <div className="space-y-5 animate-fade-in">
-          {/* Subtabs for Subscriptions */}
-          <div className="flex flex-wrap gap-2 border-b border-ui-border pb-3">
-            {([
-              { key: 'plans' as const, label: ar ? 'باقات الأسعار والمميزات' : 'Subscription Plans', icon: <Layers className="w-4 h-4" /> },
-              { key: 'gateway' as const, label: ar ? 'إعدادات بوابة InstaPay والتحويل' : 'InstaPay Gateway Settings', icon: <QrCode className="w-4 h-4" /> },
-              { key: 'payments' as const, label: ar ? `مراجعة المدفوعات (${payments.filter((p) => p.status === 'pending').length})` : 'Payment Reviews', icon: <Receipt className="w-4 h-4" /> },
-              { key: 'branch_subs' as const, label: ar ? 'اشتراكات الفروع والتجديد اليدوي' : 'Branch Subscriptions', icon: <Store className="w-4 h-4" /> },
-            ] as const).map((st) => (
-              <button
-                key={st.key}
-                onClick={() => setSubTab(st.key)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
-                  subTab === st.key ? 'bg-ui-text text-ui-page' : 'bg-ui-page-alt text-ui-subtle hover:text-ui-text'
-                }`}
-              >
-                {st.icon}
-                <span>{st.label}</span>
-              </button>
-            ))}
-          </div>
-
-          {/* Subtab 1: Plans */}
-          {subTab === 'plans' && (
-            <div className="space-y-4">
-              <div className="flex justify-between items-center">
-                <div>
-                  <h3 className="text-base font-bold text-ui-text">{ar ? 'باقات الاشتراك المتاحة' : 'Active Subscription Plans'}</h3>
-                  <p className="text-xs text-ui-subtle">{ar ? 'يمكنك تحديد الأسعار والمميزات المشمولة لكل باقة' : 'Set prices and features included in each tier'}</p>
-                </div>
-                <Button
-                  size="sm"
-                  onClick={() => {
-                    setEditingPlan({
-                      name_ar: '',
-                      name_en: '',
-                      code: 'plan_' + Date.now().toString().slice(-4),
-                      monthly_price_egp: 299,
-                      yearly_price_egp: 2990,
-                      max_branches: 1,
-                      max_users_per_branch: 3,
-                      features: ['pos', 'inventory', 'reports'],
-                      is_active: true,
-                    });
-                    setPlanModalOpen(true);
-                  }}
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>{ar ? 'إضافة باقة جديدة' : 'Add New Plan'}</span>
-                </Button>
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {plans.map((p) => (
-                  <Card key={p.id} className="p-5 flex flex-col justify-between border-2 hover:border-brand-500/40 transition">
-                    <div>
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-brand-600 bg-brand-500/10 px-2 py-0.5 rounded-md">
-                            {p.code}
-                          </span>
-                          <h4 className="text-lg font-black text-ui-text mt-1">{ar ? p.name_ar : p.name_en || p.name_ar}</h4>
-                        </div>
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${p.is_active ? 'bg-ui-success-soft text-ui-success' : 'bg-ui-page-alt text-ui-subtle'}`}>
-                          {p.is_active ? (ar ? 'نشط' : 'Active') : (ar ? 'غير متاح' : 'Inactive')}
-                        </span>
-                      </div>
-
-                      <div className="my-4 p-3 bg-ui-page rounded-xl border border-ui-border">
-                        <div className="flex items-baseline gap-1">
-                          <span className="text-2xl font-black text-ui-text">{formatCurrency(p.monthly_price_egp, 'EGP', lang)}</span>
-                          <span className="text-xs text-ui-subtle">/ {ar ? 'شهرياً' : 'month'}</span>
-                        </div>
-                        <div className="text-xs text-ui-subtle mt-1 flex justify-between">
-                          <span>{ar ? 'الاشتراك السنوي:' : 'Yearly:'}</span>
-                          <span className="font-semibold text-ui-text">{formatCurrency(p.yearly_price_egp, 'EGP', lang)}</span>
-                        </div>
-                      </div>
-
-                      <div className="space-y-1.5 text-xs text-ui-subtle mb-4">
-                        <div className="flex justify-between">
-                          <span>{ar ? 'الحد الأقصى للفروع:' : 'Max Branches:'}</span>
-                          <span className="font-bold text-ui-text">{p.max_branches}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>{ar ? 'المستخدمين لكل فرع:' : 'Users per branch:'}</span>
-                          <span className="font-bold text-ui-text">{p.max_users_per_branch}</span>
-                        </div>
-                      </div>
-
-                      <div className="space-y-1 pt-3 border-t border-ui-border">
-                        <p className="text-[11px] font-bold text-ui-muted mb-1.5">{ar ? 'المميزات المشمولة:' : 'Included Features:'}</p>
-                        <div className="flex flex-wrap gap-1">
-                          {normalizeFeatures(p.features).map((fKey) => {
-                            const feat = AVAILABLE_FEATURES.find((af) => af.id === fKey);
-                            return (
-                              <span key={fKey} className="px-2 py-0.5 rounded-md bg-ui-page text-[10px] font-medium border border-ui-border text-ui-text">
-                                {feat ? (ar ? feat.ar : feat.en) : fKey}
-                              </span>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-end gap-2 pt-4 mt-4 border-t border-ui-border">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          setEditingPlan({ ...p });
-                          setPlanModalOpen(true);
-                        }}
-                      >
-                        <Edit2 className="w-3.5 h-3.5" />
-                        <span>{ar ? 'تعديل' : 'Edit'}</span>
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="text-ui-danger hover:bg-ui-danger-soft"
-                        onClick={() => {
-                          setDeletingPlanId(p.id);
-                          setDeletePlanConfirmOpen(true);
-                        }}
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </Button>
-                    </div>
-                  </Card>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Subtab 2: Gateway Settings */}
-          {subTab === 'gateway' && gatewaySettings && (
-            <Card className="p-5 max-w-3xl space-y-4">
-              <div>
-                <h3 className="text-base font-bold text-ui-text">{ar ? 'إعدادات بوابة InstaPay ومعلومات التحويل' : 'InstaPay Gateway Settings'}</h3>
-                <p className="text-xs text-ui-subtle">{ar ? 'هذه البيانات تظهر للفروع عند طلب الترقية أو تجديد الاشتراك' : 'These payment details will be shown to branches on renewal'}</p>
-              </div>
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Input
-                  label={ar ? 'معرّف أو رقم InstaPay (Username / Mobile)' : 'InstaPay ID / Mobile'}
-                  value={gatewaySettings.instapay_id || ''}
-                  onChange={(e) => setGatewaySettings({ ...gatewaySettings, instapay_id: e.target.value })}
-                />
-                <Input
-                  label={ar ? 'اسم المستفيد / الحساب' : 'Beneficiary Name'}
-                  value={gatewaySettings.beneficiary_name || ''}
-                  onChange={(e) => setGatewaySettings({ ...gatewaySettings, beneficiary_name: e.target.value })}
-                />
-                <div className="sm:col-span-2">
-                  <Input
-                    label={ar ? 'رابط صورة رمز الاستجابة السريع (InstaPay QR Code URL)' : 'QR Code Image URL'}
-                    value={gatewaySettings.qr_code_url || ''}
-                    onChange={(e) => setGatewaySettings({ ...gatewaySettings, qr_code_url: e.target.value })}
-                    placeholder="https://..."
-                  />
-                </div>
-                <div className="sm:col-span-2">
-                  <Textarea
-                    label={ar ? 'تعليمات التحويل (بالعربية)' : 'Payment Instructions (AR)'}
-                    value={gatewaySettings.instructions_ar || ''}
-                    onChange={(e) => setGatewaySettings({ ...gatewaySettings, instructions_ar: e.target.value })}
-                    rows={3}
-                  />
-                </div>
-                <div className="sm:col-span-2">
-                  <Textarea
-                    label={ar ? 'تعليمات التحويل (بالإنجليزية)' : 'Payment Instructions (EN)'}
-                    value={gatewaySettings.instructions_en || ''}
-                    onChange={(e) => setGatewaySettings({ ...gatewaySettings, instructions_en: e.target.value })}
-                    rows={2}
-                  />
-                </div>
-                <Input
-                  label={ar ? 'فترة التجربة الافتراضية (أيام)' : 'Trial Period (Days)'}
-                  type="number"
-                  value={gatewaySettings.trial_days}
-                  onChange={(e) => setGatewaySettings({ ...gatewaySettings, trial_days: Number(e.target.value) })}
-                />
-                <Input
-                  label={ar ? 'فترة السماح بعد الانتهاء (أيام)' : 'Grace Period (Days)'}
-                  type="number"
-                  value={gatewaySettings.grace_days}
-                  onChange={(e) => setGatewaySettings({ ...gatewaySettings, grace_days: Number(e.target.value) })}
-                />
-              </div>
-
-              <div className="pt-3 border-t border-ui-border flex justify-end">
-                <Button onClick={handleSaveGateway} disabled={savingGateway}>
-                  {savingGateway && <Loader2 className="w-4 h-4 animate-spin" />}
-                  <span>{ar ? 'حفظ إعدادات البوابة' : 'Save Gateway Settings'}</span>
-                </Button>
-              </div>
-            </Card>
-          )}
-
-          {/* Subtab 3: Payment Reviews */}
-          {subTab === 'payments' && (
-            <div className="space-y-4">
-              <div className="flex justify-between items-center">
-                <h3 className="text-base font-bold text-ui-text">{ar ? 'سجل طلبات الدفع وإيصالات InstaPay' : 'Payment Requests & Receipts'}</h3>
-              </div>
-
-              {payments.length === 0 ? (
-                <Card className="p-12 text-center text-ui-subtle">
-                  <Receipt className="w-12 h-12 mx-auto mb-3 opacity-30" />
-                  <p className="font-semibold">{ar ? 'لا توجد طلبات دفع مسجلة' : 'No payment requests found'}</p>
-                </Card>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-ui-border text-start">
-                        <th className="p-3 font-semibold text-ui-subtle">{ar ? 'الفرع' : 'Branch'}</th>
-                        <th className="p-3 font-semibold text-ui-subtle">{ar ? 'المبلغ والمدة' : 'Amount / Period'}</th>
-                        <th className="p-3 font-semibold text-ui-subtle">{ar ? 'الرقم المرجعي' : 'Reference'}</th>
-                        <th className="p-3 font-semibold text-ui-subtle">{ar ? 'التاريخ' : 'Date'}</th>
-                        <th className="p-3 font-semibold text-ui-subtle">{ar ? 'الحالة' : 'Status'}</th>
-                        <th className="p-3 font-semibold text-ui-subtle">{ar ? 'الإجراء' : 'Actions'}</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {payments.map((p) => {
-                        const br = branches.find((b) => b.id === p.branch_id);
-                        return (
-                          <tr key={p.id} className="border-b border-ui-border/50 hover:bg-ui-page-alt/50">
-                            <td className="p-3 font-bold text-ui-text">{br ? (ar ? br.name : br.name_en || br.name) : p.branch_id}</td>
-                            <td className="p-3">
-                              <span className="font-semibold text-ui-text">{formatCurrency(p.amount, 'EGP', lang)}</span>{' '}
-                              <span className="text-xs text-ui-subtle">({p.billing_period === 'yearly' ? (ar ? 'سنوي' : 'Yearly') : (ar ? 'شهري' : 'Monthly')})</span>
-                            </td>
-                            <td className="p-3 font-mono text-xs text-ui-subtle">{p.reference || '-'}</td>
-                            <td className="p-3 text-xs text-ui-subtle">{formatDate(p.submitted_at, lang)}</td>
-                            <td className="p-3">
-                              <span
-                                className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
-                                  p.status === 'approved'
-                                    ? 'bg-ui-success-soft text-ui-success'
-                                    : p.status === 'rejected'
-                                    ? 'bg-ui-danger-soft text-ui-danger'
-                                    : 'bg-ui-warning-soft text-ui-warning'
-                                }`}
-                              >
-                                {p.status === 'approved' ? (ar ? 'معتمد' : 'Approved') : p.status === 'rejected' ? (ar ? 'مرفوض' : 'Rejected') : (ar ? 'قيد المراجعة' : 'Pending')}
-                              </span>
-                            </td>
-                            <td className="p-3 flex items-center gap-2">
-                              {p.receipt_url && (
-                                <Button size="sm" variant="outline" onClick={() => setViewReceiptModal(p.receipt_url)}>
-                                  <ExternalLink className="w-3.5 h-3.5" />
-                                  <span>{ar ? 'الإيصال' : 'Receipt'}</span>
-                                </Button>
-                              )}
-                              {p.status === 'pending' && (
-                                <>
-                                  <Button
-                                    size="sm"
-                                    onClick={() => void reviewPayment(p.id, true)}
-                                    disabled={reviewingId === p.id}
-                                    className="bg-ui-success text-white hover:bg-ui-success/90"
-                                  >
-                                    {reviewingId === p.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
-                                    <span>{ar ? 'اعتماد' : 'Approve'}</span>
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => {
-                                      setRejectPaymentId(p.id);
-                                      setRejectModalOpen(true);
-                                    }}
-                                    className="text-ui-danger hover:bg-ui-danger-soft"
-                                  >
-                                    <X className="w-3.5 h-3.5" />
-                                    <span>{ar ? 'رفض' : 'Reject'}</span>
-                                  </Button>
-                                </>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Subtab 4: Branch Subscriptions Override */}
-          {subTab === 'branch_subs' && (
-            <div className="space-y-4">
-              <h3 className="text-base font-bold text-ui-text">{ar ? 'حالة اشتراك الفروع والتعديل اليدوي' : 'Branch Subscriptions & Manual Overrides'}</h3>
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {branches.map((b) => {
-                  const st = branchStatuses[b.id];
-                  return (
-                    <Card key={b.id} className="p-4 flex flex-col justify-between space-y-3">
-                      <div>
-                        <div className="flex justify-between items-start">
-                          <h4 className="font-bold text-ui-text">{ar ? b.name : b.name_en || b.name}</h4>
-                          <span
-                            className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
-                              st?.status === 'active'
-                                ? 'bg-ui-success-soft text-ui-success'
-                                : st?.status === 'trialing' || st?.status === 'trial'
-                                ? 'bg-ui-info-soft text-ui-info'
-                                : 'bg-ui-danger-soft text-ui-danger'
-                            }`}
-                          >
-                            {st?.status === 'active' ? (ar ? 'نشط' : 'Active') : (st?.status === 'trialing' || st?.status === 'trial') ? (ar ? 'تجريبي' : 'Trial') : (ar ? 'منتهي' : 'Expired')}
-                          </span>
-                        </div>
-                        <p className="text-xs text-ui-subtle mt-1">
-                          {ar ? 'الباقة:' : 'Plan:'} <span className="font-semibold text-ui-text">{st?.plan_name_ar || st?.plan_code || (ar ? 'غير محدد' : 'None')}</span>
-                        </p>
-                        <p className="text-xs text-ui-subtle">
-                          {ar ? 'ينتهي في:' : 'Expires:'}{' '}
-                          <span className="font-medium text-ui-text">{st?.current_period_ends_at ? formatDate(st.current_period_ends_at, lang) : '-'}</span>
-                        </p>
-                      </div>
-
-                      <div className="pt-2 border-t border-ui-border">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="w-full"
-                          onClick={() => {
-                            setSelectedBranchForOverride(b);
-                            setOverridePlanId(st?.plan_id || plans[0]?.id || '');
-                            setOverrideStatus(st?.status || 'active');
-                            setBranchOverrideModalOpen(true);
-                          }}
-                        >
-                          <Edit2 className="w-3.5 h-3.5" />
-                          <span>{ar ? 'تعديل أو تجديد الاشتراك' : 'Edit / Renew Subscription'}</span>
-                        </Button>
-                      </div>
-                    </Card>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ───────────────────────────────────────────────────────────── */}
-      {/* TAB 3: إعدادات المنشأة والمتجر المركزية (Global Settings)     */}
+      {/* TAB 2: إعدادات المنشأة والمتجر المركزية (Global Settings)     */}
       {/* ───────────────────────────────────────────────────────────── */}
       {activeTab === 'general' && (
         <div className="space-y-5 max-w-4xl animate-fade-in">
@@ -1462,7 +732,7 @@ export function SuperAdminConsolePage({ defaultTab, defaultSubTab }: SuperAdminC
       )}
 
       {/* ───────────────────────────────────────────────────────────── */}
-      {/* TAB 4: تخصيصات الفروع والبيانات التجريبية                       */}
+      {/* TAB 3: تخصيصات الفروع والبيانات التجريبية                       */}
       {/* ───────────────────────────────────────────────────────────── */}
       {activeTab === 'branches_override' && (
         <div className="space-y-6 max-w-4xl animate-fade-in">
@@ -1565,7 +835,7 @@ export function SuperAdminConsolePage({ defaultTab, defaultSubTab }: SuperAdminC
       )}
 
       {/* ───────────────────────────────────────────────────────────── */}
-      {/* TAB 5: مصفوفة الأدوار والصلاحيات (RBAC Matrix)                  */}
+      {/* TAB 4: مصفوفة الأدوار والصلاحيات (RBAC Matrix)                  */}
       {/* ───────────────────────────────────────────────────────────── */}
       {activeTab === 'roles' && (
         <div className="space-y-4 animate-fade-in">
@@ -1574,7 +844,7 @@ export function SuperAdminConsolePage({ defaultTab, defaultSubTab }: SuperAdminC
       )}
 
       {/* ───────────────────────────────────────────────────────────── */}
-      {/* TAB 6: المستخدمون وسجل التدقيق (Users & Audit)                 */}
+      {/* TAB 5: المستخدمون وسجل التدقيق (Users & Audit)                 */}
       {/* ───────────────────────────────────────────────────────────── */}
       {activeTab === 'users_audit' && (
         <div className="space-y-5 animate-fade-in">
@@ -1718,7 +988,7 @@ export function SuperAdminConsolePage({ defaultTab, defaultSubTab }: SuperAdminC
       )}
 
       {/* ───────────────────────────────────────────────────────────── */}
-      {/* TAB 7: صحة وتشخيص النظام (Diagnostics & Health)                 */}
+      {/* TAB 6: صحة وتشخيص النظام (Diagnostics & Health)                 */}
       {/* ───────────────────────────────────────────────────────────── */}
       {activeTab === 'health' && (
         <div className="space-y-4 max-w-3xl animate-fade-in">
@@ -1759,98 +1029,7 @@ export function SuperAdminConsolePage({ defaultTab, defaultSubTab }: SuperAdminC
       {/* Modals & Dialogs                                              */}
       {/* ───────────────────────────────────────────────────────────── */}
 
-      {/* 1. Plan Editor Modal */}
-      {planModalOpen && editingPlan && (
-        <Modal
-          isOpen={planModalOpen}
-          onClose={() => setPlanModalOpen(false)}
-          title={editingPlan.id ? (ar ? 'تعديل باقة الاشتراك' : 'Edit Plan') : (ar ? 'إضافة باقة جديدة' : 'New Plan')}
-        >
-          <div className="space-y-4">
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Input
-                label={ar ? 'اسم الباقة (عربي)' : 'Name (Arabic)'}
-                value={editingPlan.name_ar || ''}
-                onChange={(e) => setEditingPlan({ ...editingPlan, name_ar: e.target.value })}
-              />
-              <Input
-                label={ar ? 'اسم الباقة (إنجليزي)' : 'Name (English)'}
-                value={editingPlan.name_en || ''}
-                onChange={(e) => setEditingPlan({ ...editingPlan, name_en: e.target.value })}
-              />
-              <Input
-                label={ar ? 'السعر الشهري (ج.م)' : 'Monthly Price (EGP)'}
-                type="number"
-                value={editingPlan.monthly_price_egp ?? 0}
-                onChange={(e) => setEditingPlan({ ...editingPlan, monthly_price_egp: Number(e.target.value) })}
-              />
-              <Input
-                label={ar ? 'السعر السنوي (ج.م)' : 'Yearly Price (EGP)'}
-                type="number"
-                value={editingPlan.yearly_price_egp ?? 0}
-                onChange={(e) => setEditingPlan({ ...editingPlan, yearly_price_egp: Number(e.target.value) })}
-              />
-              <Input
-                label={ar ? 'الحد الأقصى للفروع' : 'Max Branches'}
-                type="number"
-                value={editingPlan.max_branches ?? 1}
-                onChange={(e) => setEditingPlan({ ...editingPlan, max_branches: Number(e.target.value) })}
-              />
-              <Input
-                label={ar ? 'المستخدمين لكل فرع' : 'Users per Branch'}
-                type="number"
-                value={editingPlan.max_users_per_branch ?? 3}
-                onChange={(e) => setEditingPlan({ ...editingPlan, max_users_per_branch: Number(e.target.value) })}
-              />
-            </div>
-
-            <div>
-              <p className="text-xs font-bold text-ui-text mb-2">{ar ? 'المميزات المشمولة في هذه الباقة:' : 'Included Features:'}</p>
-              <div className="grid gap-2 sm:grid-cols-2 max-h-48 overflow-y-auto p-2 border border-ui-border rounded-xl">
-                {AVAILABLE_FEATURES.map((feat) => {
-                  const norm = normalizeFeatures(editingPlan.features);
-                  const isChecked = norm.includes(feat.id);
-                  return (
-                    <label key={feat.id} className="flex items-center gap-2 p-1.5 hover:bg-ui-page rounded-lg cursor-pointer text-xs">
-                      <input
-                        type="checkbox"
-                        checked={isChecked}
-                        onChange={(e) => {
-                          const next = e.target.checked ? [...norm, feat.id] : norm.filter((x) => x !== feat.id);
-                          setEditingPlan({ ...editingPlan, features: next });
-                        }}
-                        className="rounded text-brand-600 focus:ring-brand-500"
-                      />
-                      <span>{ar ? feat.ar : feat.en}</span>
-                    </label>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-2 pt-3 border-t border-ui-border">
-              <Button variant="outline" onClick={() => setPlanModalOpen(false)}>
-                {ar ? 'إلغاء' : 'Cancel'}
-              </Button>
-              <Button onClick={handleSavePlan} disabled={savingPlan}>
-                {savingPlan && <Loader2 className="w-4 h-4 animate-spin" />}
-                <span>{ar ? 'حفظ الباقة' : 'Save Plan'}</span>
-              </Button>
-            </div>
-          </div>
-        </Modal>
-      )}
-
-      {/* 2. Delete Plan Dialog */}
-      <ConfirmDialog
-        isOpen={deletePlanConfirmOpen}
-        onClose={() => setDeletePlanConfirmOpen(false)}
-        onConfirm={handleDeletePlan}
-        title={ar ? 'تأكيد حذف الباقة' : 'Delete Plan'}
-        message={ar ? 'هل أنت متأكد من رغبتك في حذف هذه الباقة نهائياً؟' : 'Are you sure you want to delete this subscription plan?'}
-      />
-
-      {/* 3. Delete Demo Data Dialog */}
+      {/* 1. Delete Demo Data Dialog */}
       <ConfirmDialog
         isOpen={demoConfirmOpen}
         onClose={() => setDemoConfirmOpen(false)}
@@ -1859,83 +1038,6 @@ export function SuperAdminConsolePage({ defaultTab, defaultSubTab }: SuperAdminC
         message={ar ? 'سيتم حذف جميع المنتجات والمبيعات التجريبية المرتبطة بهذا الفرع. هل تريد الاستمرار؟' : 'All test demo fixtures will be erased for this branch. Continue?'}
       />
 
-      {/* 4. Reject Payment Modal */}
-      {rejectModalOpen && (
-        <Modal isOpen={rejectModalOpen} onClose={() => setRejectModalOpen(false)} title={ar ? 'سبب رفض التحويل' : 'Reject Payment'}>
-          <div className="space-y-4">
-            <Input
-              label={ar ? 'سبب الرفض' : 'Rejection Reason'}
-              placeholder={ar ? 'مثال: رقم الإشعار غير صحيح أو المبلغ غير مكتمل' : 'e.g. Invalid reference'}
-              value={rejectReason}
-              onChange={(e) => setRejectReason(e.target.value)}
-            />
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setRejectModalOpen(false)}>
-                {ar ? 'إلغاء' : 'Cancel'}
-              </Button>
-              <Button
-                className="bg-ui-danger text-white hover:bg-ui-danger/90"
-                onClick={() => rejectPaymentId && reviewPayment(rejectPaymentId, false, rejectReason)}
-              >
-                {ar ? 'تأكيد الرفض' : 'Confirm Reject'}
-              </Button>
-            </div>
-          </div>
-        </Modal>
-      )}
-
-      {/* 5. View Receipt Modal */}
-      {viewReceiptModal && (
-        <Modal isOpen={!!viewReceiptModal} onClose={() => setViewReceiptModal(null)} title={ar ? 'إيصال التحويل' : 'Payment Receipt'}>
-          <div className="p-2 flex justify-center">
-            <img src={viewReceiptModal} alt="Receipt" className="max-h-[70vh] rounded-xl object-contain shadow-lg" />
-          </div>
-        </Modal>
-      )}
-
-      {/* 6. Manual Branch Override Modal */}
-      {branchOverrideModalOpen && selectedBranchForOverride && (
-        <Modal
-          isOpen={branchOverrideModalOpen}
-          onClose={() => setBranchOverrideModalOpen(false)}
-          title={ar ? `تعديل اشتراك: ${selectedBranchForOverride.name}` : `Override Subscription: ${selectedBranchForOverride.name}`}
-        >
-          <div className="space-y-4">
-            <Select
-              label={ar ? 'الباقة المخصصة' : 'Select Plan'}
-              value={overridePlanId}
-              onChange={(e) => setOverridePlanId(e.target.value)}
-              options={plans.map((p) => ({ value: p.id, label: `${ar ? p.name_ar : p.name_en || p.name_ar} (${p.monthly_price_egp} EGP)` }))}
-            />
-            <Select
-              label={ar ? 'حالة الاشتراك' : 'Status'}
-              value={overrideStatus}
-              onChange={(e) => setOverrideStatus(e.target.value)}
-              options={[
-                { value: 'active', label: ar ? 'نشط (Active)' : 'Active' },
-                { value: 'trialing', label: ar ? 'فترة تجريبية (Trialing)' : 'Trialing' },
-                { value: 'past_due', label: ar ? 'مستحق الدفع (Past Due)' : 'Past Due' },
-                { value: 'canceled', label: ar ? 'ملغى (Canceled)' : 'Canceled' },
-              ]}
-            />
-            <Input
-              label={ar ? 'تمديد الأيام الإضافية من الآن' : 'Days to extend'}
-              type="number"
-              value={overrideDaysToAdd}
-              onChange={(e) => setOverrideDaysToAdd(Number(e.target.value))}
-            />
-            <div className="flex justify-end gap-2 pt-3 border-t border-ui-border">
-              <Button variant="outline" onClick={() => setBranchOverrideModalOpen(false)}>
-                {ar ? 'إلغاء' : 'Cancel'}
-              </Button>
-              <Button onClick={handleSaveBranchOverride} disabled={savingBranchOverride}>
-                {savingBranchOverride && <Loader2 className="w-4 h-4 animate-spin" />}
-                <span>{ar ? 'حفظ وتفعيل' : 'Apply & Activate'}</span>
-              </Button>
-            </div>
-          </div>
-        </Modal>
-      )}
     </DesignSurface>
   );
 }

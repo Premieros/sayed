@@ -18,7 +18,6 @@ export interface SaleItemInput {
 }
 
 export interface PurchaseItemInput {
-  raw_material_id?: string;
   product_id?: string;
   unit_name: string;
   quantity: number;

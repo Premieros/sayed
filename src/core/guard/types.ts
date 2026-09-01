@@ -1,12 +1,9 @@
 export type OperationalActionKey =
   | 'purchase_create'
   | 'pos_checkout'
-  | 'production_create'
   | 'transfer_create'
   | 'stock_count_create'
   | 'product_create'
-  | 'recipe_create'
-  | 'raw_material_create'
   | 'category_create'
   | 'unit_create'
   | 'warehouse_create'
@@ -27,8 +24,6 @@ export type PrerequisiteStepKey =
   | 'create_unit'
   | 'create_category'
   | 'create_product'
-  | 'create_raw_material'
-  | 'create_recipe'
   | 'open_shift'
   | 'need_permission'
   | 'configure_kitchen_station'
@@ -65,8 +60,6 @@ export interface OperationalValidationContext {
   suppliersCount?: number;
   customersCount?: number;
   productsCount?: number;
-  rawMaterialsCount?: number;
-  recipesCount?: number;
   unitsCount?: number;
   categoriesCount?: number;
   activeShiftId?: string | null;

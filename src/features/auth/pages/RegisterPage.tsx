@@ -27,7 +27,7 @@ export function RegisterPage() {
     e.preventDefault();
     setLoading(true);
     try {
-      const { data, error } = await api.subscriptions.registerTenant({
+      const { data, error } = await api.admin.registerTenant({
         p_store_name: storeName.trim(),
         p_store_name_en: storeNameEn.trim() || null,
         p_owner_name: ownerName.trim(),
@@ -47,6 +47,7 @@ export function RegisterPage() {
         if (code === 'EMAIL_TAKEN') msg = t('emailExists');
         else if (code === 'WEAK_PASSWORD') msg = t('weakPassword');
         else if (code === 'INVALID_EMAIL') msg = t('invalidEmail');
+        else if (code && typeof code === 'string' && code.toUpperCase().includes('REGISTRATION_DISABLED')) msg = t('registrationDisabled');
         show(msg, 'error');
         return;
       }

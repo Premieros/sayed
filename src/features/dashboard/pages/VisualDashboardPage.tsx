@@ -2,7 +2,7 @@
 import { Link } from 'react-router-dom';
 import {
   AlertTriangle, ArrowDown, ArrowUp, ArrowUpRight, BarChart3, ChevronDown, Clock3,
-  CreditCard, Download, Filter, RefreshCw, RotateCcw, ShoppingBag, Tag, Trash2, Wallet,
+  CreditCard, Download, Filter, RefreshCw, RotateCcw, ShoppingBag, Tag, Wallet,
 } from 'lucide-react';
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { supabase } from '@/api';
@@ -139,7 +139,6 @@ export function VisualDashboardPage() {
   const [previousSales, setPreviousSales] = useState<Sale[]>([]);
   const [inventory, setInventory] = useState<Inventory[]>([]);
   const [items, setItems] = useState<SaleItem[]>([]);
-  const [wasteRows, setWasteRows] = useState<{ waste_category: string; waste_type: string; total_quantity: number; total_cost: number; entry_count: number }[]>([]);
   const [quickStats, setQuickStats] = useState({ sales: 0, expenses: 0, profit: 0, lowStockCount: 0 });
 
   const effectiveBranch = isAdmin ? activeBranchId : branchFilter;
@@ -173,10 +172,6 @@ export function VisualDashboardPage() {
       } else {
         setItems([]);
       }
-      const wFrom = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
-      const wTo = new Date().toISOString().slice(0, 10);
-      const wr = await supabase.rpc('get_waste_report', { p_branch_id: effectiveBranch, p_from_date: wFrom, p_to_date: wTo });
-      setWasteRows(wr.error ? [] : ((wr.data || []) as typeof wasteRows));
     } catch (e) {
       console.error('Dashboard load failed', e);
       setSales([]);
@@ -295,9 +290,6 @@ export function VisualDashboardPage() {
           </Link>
           <Link to="/purchases" className="inline-flex items-center gap-2 rounded-xl border border-ui-border bg-ui-surface px-4 py-2 text-sm font-bold text-ui-text shadow-ui-sm transition hover:bg-ui-page-alt">
             {ar ? 'شراء' : 'Purchase'}
-          </Link>
-          <Link to="/production" className="inline-flex items-center gap-2 rounded-xl border border-ui-border bg-ui-surface px-4 py-2 text-sm font-bold text-ui-text shadow-ui-sm transition hover:bg-ui-page-alt">
-            {ar ? 'إنتاج' : 'Production'}
           </Link>
         </div>
       </section>
@@ -491,31 +483,6 @@ export function VisualDashboardPage() {
               </table> : <Empty ar={ar} />}
             </Card>
           </section>
-
-          {wasteRows.length > 0 && (() => {
-            const totalWasteCost = wasteRows.reduce((s, r) => s + Number(r.total_cost || 0), 0);
-            const totalWasteEntries = wasteRows.reduce((s, r) => s + Number(r.entry_count || 0), 0);
-            return (
-              <Card className="border-ui-danger/20 bg-ui-danger-soft p-5">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2 font-bold text-ui-danger"><Trash2 className="h-5 w-5" />{ar ? ' الهالك — آخر 30 يوم' : ' Waste — Last 30 Days'}</div>
-                  <Link to="/waste-center" className="text-xs font-bold text-ui-danger">{ar ? 'عرض الكل' : 'View all'}</Link>
-                </div>
-                <div className="flex items-center gap-6 mb-3 text-sm">
-                  <span className="text-ui-danger font-semibold">{ar ? 'الإجمالي:' : 'Total:'} {money(totalWasteCost)}</span>
-                  <span className="text-ui-danger/70">{totalWasteEntries} {ar ? 'سجل' : 'entries'}</span>
-                </div>
-                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                  {wasteRows.slice(0, 6).map((r, i) => (
-                    <div key={i} className="rounded-xl bg-ui-surface p-2.5 shadow-ui-sm text-sm">
-                      <p className="font-semibold truncate text-ui-text">{r.waste_category}</p>
-                      <p className="text-ui-danger text-xs mt-0.5">{Number(r.total_quantity).toLocaleString()} — {money(Number(r.total_cost))}</p>
-                    </div>
-                  ))}
-                </div>
-              </Card>
-            );
-          })()}
 
           {lowStock.length > 0 && (
             <Card className="border-ui-warning/20 bg-ui-warning-soft p-5">

@@ -20,7 +20,6 @@ describe('sales deduction — unit inventory only', () => {
         units_deducted: [
           { unit_id: 'unit-sauce', unit_name: 'Sauce', unit_type: 'manufactured', quantity: 2 },
         ],
-        raw_materials_deducted: [],
         errors: [],
         total_cost: 40,
       },
@@ -47,7 +46,7 @@ describe('sales deduction — unit inventory only', () => {
     expect(result.units_deducted).toHaveLength(1);
     expect(result.units_deducted[0].unit_id).toBe('unit-sauce');
     expect(result.units_deducted[0].quantity).toBe(2);
-    expect(result.raw_materials_deducted).toHaveLength(0);
+    expect(Object.keys(result).sort()).toEqual(['errors', 'units_deducted']);
     expect(result.errors).toHaveLength(0);
   });
 
@@ -57,7 +56,6 @@ describe('sales deduction — unit inventory only', () => {
         success: false,
         error: 'INSUFFICIENT_UNIT_STOCK',
         units_deducted: [],
-        raw_materials_deducted: [],
         errors: [],
       },
       error: null,
@@ -69,7 +67,7 @@ describe('sales deduction — unit inventory only', () => {
     ]);
 
     expect(result.units_deducted).toHaveLength(0);
-    expect(result.raw_materials_deducted).toHaveLength(0);
+    expect(Object.keys(result).sort()).toEqual(['errors', 'units_deducted']);
     expect(result.errors).toEqual(['INSUFFICIENT_UNIT_STOCK']);
   });
 });

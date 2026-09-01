@@ -27,8 +27,6 @@ export function useOperationalGuard() {
         suppliersCount: customCtx.suppliersCount,
         customersCount: customCtx.customersCount,
         productsCount: customCtx.productsCount,
-        rawMaterialsCount: customCtx.rawMaterialsCount,
-        recipesCount: customCtx.recipesCount,
         unitsCount: customCtx.unitsCount,
         categoriesCount: customCtx.categoriesCount,
         activeShiftId: customCtx.activeShiftId,
@@ -46,7 +44,6 @@ export function useOperationalGuard() {
         warehousesCount?: number;
         suppliersCount?: number;
         productsCount?: number;
-        rawMaterialsCount?: number;
         formData?: Record<string, unknown>;
       }
     ): boolean => {
@@ -85,30 +82,6 @@ export function useOperationalGuard() {
         location.pathname,
         'شاشة البيع والكاشير (POS)',
         'POS Checkout',
-        ctx.formData
-      );
-    },
-    [buildValidationContext, isSuper, can, workflow, location.pathname]
-  );
-
-  const guardProduction = useCallback(
-    (
-      ctx: {
-        warehousesCount?: number;
-        recipesCount?: number;
-        formData?: Record<string, unknown>;
-      }
-    ): boolean => {
-      const valCtx = buildValidationContext({
-        ...ctx,
-        hasPermission: isSuper || can('production.manage'),
-      });
-      return workflow.validateAndProceed(
-        'production_create',
-        valCtx,
-        location.pathname,
-        'أوامر التشغيل والتصنيع',
-        'Unit Production Order',
         ctx.formData
       );
     },
@@ -165,7 +138,6 @@ export function useOperationalGuard() {
     PREREQUISITE_STEPS,
     guardPurchase,
     guardPos,
-    guardProduction,
     guardTransfer,
     interceptDbError,
     effectiveBranch,

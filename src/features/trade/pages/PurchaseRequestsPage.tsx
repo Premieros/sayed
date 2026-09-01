@@ -16,19 +16,17 @@ import { formatDate } from '@/lib/format';
 import { useCan } from '@/lib/permissions';
 import { useBranches } from '@/hooks/useBranches';
 import { usePaginatedRows } from '@/hooks/usePaginatedRows';
-import type { Supplier, Product, RawMaterial, RpcResult, PurchaseRequestRow, ProcurementLineInput } from '@/lib/types';
+import type { Supplier, Product, RpcResult, PurchaseRequestRow, ProcurementLineInput } from '@/lib/types';
 
 interface RequestFormItem {
-  line_type: 'product' | 'raw';
   product_id: string;
-  raw_material_id: string;
   quantity: number;
   unit_name: string;
   estimated_cost: number;
   notes: string;
 }
 
-const EMPTY_LINE: RequestFormItem = { line_type: 'product', product_id: '', raw_material_id: '', unit_name: 'piece', quantity: 1, estimated_cost: 0, notes: '' };
+const EMPTY_LINE: RequestFormItem = { product_id: '', unit_name: 'piece', quantity: 1, estimated_cost: 0, notes: '' };
 
 const STATUS_STYLES: Record<string, string> = {
   draft: 'bg-ui-page-alt text-ui-muted',
@@ -56,7 +54,6 @@ export function PurchaseRequestsPage() {
   });
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
-  const [rawMaterials, setRawMaterials] = useState<RawMaterial[]>([]);
   const [search, setSearch] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [viewModal, setViewModal] = useState<PurchaseRequestRow | null>(null);
@@ -73,14 +70,12 @@ export function PurchaseRequestsPage() {
   const [lineItems, setLineItems] = useState<RequestFormItem[]>([{ ...EMPTY_LINE }]);
 
   async function loadMeta() {
-    const [s, pr, rm] = await Promise.all([
+    const [s, pr] = await Promise.all([
       supabase.from('suppliers').select('*').order('name'),
       supabase.from('products').select('*').eq('is_active', true).order('name'),
-      supabase.from('raw_materials').select('*').eq('is_active', true).order('name'),
     ]);
     setSuppliers((s.data as Supplier[]) || []);
     setProducts((pr.data as Product[]) || []);
-    setRawMaterials((rm.data as RawMaterial[]) || []);
   }
   useEffect(() => { loadMeta(); }, []);
 
@@ -98,7 +93,7 @@ export function PurchaseRequestsPage() {
 
   const save = async () => {
     if (!form.branch_id) { show(t('required') + ': ' + t('branch'), 'error'); return; }
-    const validItems = lineItems.filter((l) => (l.line_type === 'product' ? l.product_id : l.raw_material_id) && l.quantity > 0);
+    const validItems = lineItems.filter((l) => l.product_id && l.quantity > 0);
     if (validItems.length === 0) { show(t('required') + ': ' + t('addItem'), 'error'); return; }
 
     setSaving(true);
@@ -109,7 +104,7 @@ export function PurchaseRequestsPage() {
       p_expected_date: form.expected_date || null,
       p_notes: form.notes || null,
       p_items: validItems.map((i): ProcurementLineInput => ({
-        ...(i.line_type === 'product' ? { product_id: i.product_id } : { raw_material_id: i.raw_material_id }),
+        product_id: i.product_id,
         quantity: i.quantity,
         unit_name: i.unit_name,
         estimated_cost: i.estimated_cost || undefined,
@@ -145,9 +140,9 @@ export function PurchaseRequestsPage() {
 
   const viewRequest = async (r: PurchaseRequestRow) => {
     setViewModal(r);
-    const { data } = await supabase.from('purchase_request_items').select('*, product:products(name), raw_material:raw_materials(name)').eq('request_id', r.id);
+    const { data } = await supabase.from('purchase_request_items').select('*, product:products(name)').eq('request_id', r.id);
     setViewItems((data || []).map((i: Record<string, unknown>) => ({
-      name: (i.product as { name: string })?.name || (i.raw_material as { name: string })?.name || '-',
+      name: (i.product as { name: string })?.name || '-',
       quantity: Number(i.quantity),
       estimated_cost: i.estimated_cost != null ? Number(i.estimated_cost) : null,
     })));
@@ -225,22 +220,11 @@ export function PurchaseRequestsPage() {
             <div className="space-y-2">
               {lineItems.map((l, i) => (
                 <div key={i} className="grid grid-cols-12 gap-2 items-center">
-                  <select value={l.line_type} onChange={(e) => updateLine(i, 'line_type', e.target.value)} className="col-span-2 rounded-md border border-ui-border bg-ui-surface px-2 py-1.5 text-sm">
-                    <option value="product">{t('product')}</option>
-                    <option value="raw">{t('rawMaterial')}</option>
-                  </select>
-                  <div className="col-span-3">
-                    {l.line_type === 'product' ? (
-                      <select value={l.product_id} onChange={(e) => updateLine(i, 'product_id', e.target.value)} className="w-full rounded-md border border-ui-border bg-ui-surface px-2 py-1.5 text-sm">
-                        <option value="">--</option>
-                        {products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                      </select>
-                    ) : (
-                      <select value={l.raw_material_id} onChange={(e) => updateLine(i, 'raw_material_id', e.target.value)} className="w-full rounded-md border border-ui-border bg-ui-surface px-2 py-1.5 text-sm">
-                        <option value="">--</option>
-                        {rawMaterials.map((rm) => <option key={rm.id} value={rm.id}>{rm.name}</option>)}
-                      </select>
-                    )}
+                  <div className="col-span-5">
+                    <select value={l.product_id} onChange={(e) => updateLine(i, 'product_id', e.target.value)} className="w-full rounded-md border border-ui-border bg-ui-surface px-2 py-1.5 text-sm">
+                      <option value="">--</option>
+                      {products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    </select>
                   </div>
                   <input type="number" placeholder={t('quantity')} value={l.quantity || ''} onChange={(e) => updateLine(i, 'quantity', parseFloat(e.target.value) || 0)} className="col-span-2 rounded-md border border-ui-border bg-ui-surface px-2 py-1.5 text-sm" />
                   <input type="number" placeholder={t('estimatedCost')} step="0.01" value={l.estimated_cost || ''} onChange={(e) => updateLine(i, 'estimated_cost', parseFloat(e.target.value) || 0)} className="col-span-2 rounded-md border border-ui-border bg-ui-surface px-2 py-1.5 text-sm" />

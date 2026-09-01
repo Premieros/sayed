@@ -1,15 +1,14 @@
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import {
   Palette,
   Languages,
-  CreditCard,
   Store,
   Users,
   ShieldAlert,
   Sparkles,
   Save,
-  Check,
   Loader2,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { supabase } from '@/api';
@@ -25,11 +24,10 @@ import { Button } from '@/components/Button';
 import { Input, Select, Textarea } from '@/components/Input';
 import { logAudit } from '@/lib/audit';
 import { findUiTheme, UI_THEMES } from '@/lib/themes';
-import { formatCurrency, formatDate } from '@/lib/format';
-import type { BranchSettings, SubscriptionPlan, SubscriptionStatus } from '@/lib/types';
+import type { BranchSettings } from '@/lib/types';
 import { APP_ROUTES } from '@/core/navigation/routes';
 
-type SettingsTab = 'branch_profile' | 'branch_subscription' | 'branch_staff' | 'appearance' | 'language';
+type SettingsTab = 'branch_profile' | 'branch_staff' | 'appearance' | 'language' | 'system_controls';
 
 interface UserRow {
   id: string;
@@ -59,25 +57,14 @@ export function SettingsControlCenterPage() {
   const [selectedBranchId, setSelectedBranchId] = useState<string>(myBranchId);
   const [branchForm, setBranchForm] = useState<Partial<BranchSettings>>({});
 
-  // Branch subscription state
-  const [branchSubStatus, setBranchSubStatus] = useState<SubscriptionStatus | null>(null);
-  const [publicPlans, setPublicPlans] = useState<SubscriptionPlan[]>([]);
-  const [gatewaySettings, setGatewaySettings] = useState<{
-    instapay_id: string | null;
-    beneficiary_name: string | null;
-    qr_code_url: string | null;
-    instructions_ar: string | null;
-    instructions_en: string | null;
-  } | null>(null);
-  const [selectedUpgradePlan, setSelectedUpgradePlan] = useState<SubscriptionPlan | null>(null);
-  const [upgradeCycle, setUpgradeCycle] = useState<'monthly' | 'yearly'>('monthly');
-  const [paymentRef, setPaymentRef] = useState('');
-  const [receiptUrl, setReceiptUrl] = useState('');
-  const [submittingPayment, setSubmittingPayment] = useState(false);
-
   // Branch staff state
   const [branchStaff, setBranchStaff] = useState<UserRow[]>([]);
   const [loadingStaff, setLoadingStaff] = useState(false);
+
+  // System Controls state (super admin only)
+  const [allowNewUserCreation, setAllowNewUserCreation] = useState(false);
+  const [systemControlsLoading, setSystemControlsLoading] = useState(false);
+  const [savingSystemControl, setSavingSystemControl] = useState(false);
 
   // Load branch specific form data
   const targetBranchId = selectedBranchId || myBranchId;
@@ -97,19 +84,6 @@ export function SettingsControlCenterPage() {
     }
   }, [targetBranchId, branchSettingsMap]);
 
-  // Load branch subscription data & public plans
-  const loadBranchSubData = useCallback(async () => {
-    if (!targetBranchId) return;
-    const [stRes, plansRes, sRes] = await Promise.all([
-      api.subscriptions.status({ p_branch_id: targetBranchId }),
-      api.subscriptions.listPlans(),
-      supabase.rpc('subscription_settings_get'),
-    ]);
-    if (!stRes.error && stRes.data) setBranchSubStatus(stRes.data);
-    if (!plansRes.error && plansRes.data) setPublicPlans(plansRes.data);
-    if (!sRes.error && sRes.data) setGatewaySettings(sRes.data as never);
-  }, [targetBranchId]);
-
   // Load branch staff
   const loadBranchStaff = useCallback(async () => {
     if (!targetBranchId) return;
@@ -125,21 +99,22 @@ export function SettingsControlCenterPage() {
     }
   }, [targetBranchId]);
 
-  const currentPlan = useMemo(
-    () => publicPlans.find((p) => p.id === branchSubStatus?.plan_id),
-    [publicPlans, branchSubStatus?.plan_id]
-  );
-
-  const daysRemaining = useMemo(() => {
-    if (!branchSubStatus?.current_period_ends_at) return 0;
-    const diff = new Date(branchSubStatus.current_period_ends_at).getTime() - Date.now();
-    return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
-  }, [branchSubStatus?.current_period_ends_at]);
+  // Load System Controls (allow_new_user_creation)
+  const loadSystemControls = useCallback(async () => {
+    setSystemControlsLoading(true);
+    const { data } = await api.admin.getSystemSettings({ p_key: 'allow_new_user_creation' });
+    const value = Array.isArray(data) ? data[0]?.value : (data as { value?: unknown } | null)?.value;
+    setAllowNewUserCreation(Boolean(value));
+    setSystemControlsLoading(false);
+  }, []);
 
   useEffect(() => {
-    if (active === 'branch_subscription') void loadBranchSubData();
     if (active === 'branch_staff') void loadBranchStaff();
-  }, [active, loadBranchSubData, loadBranchStaff]);
+  }, [active, loadBranchStaff]);
+
+  useEffect(() => {
+    if (active === 'system_controls' && user?.role === 'super_admin') void loadSystemControls();
+  }, [active, user?.role, loadSystemControls]);
 
   const pickTheme = (key: string) => {
     const p = findUiTheme(key);
@@ -173,48 +148,40 @@ export function SettingsControlCenterPage() {
     setSaving(false);
   };
 
-  // Submit payment for branch manager
-  const submitBranchPayment = async () => {
-    if (!selectedUpgradePlan || !targetBranchId) return;
-    setSubmittingPayment(true);
-    const price =
-      upgradeCycle === 'yearly'
-        ? selectedUpgradePlan.yearly_price_egp
-        : selectedUpgradePlan.monthly_price_egp;
-
-    const { data, error } = await supabase.rpc('submit_instapay_payment', {
-      p_branch_id: targetBranchId,
-      p_plan_id: selectedUpgradePlan.id,
-      p_amount: price,
-      p_billing_period: upgradeCycle,
-      p_reference: paymentRef || null,
-      p_receipt_url: receiptUrl || null,
-    });
-
-    setSubmittingPayment(false);
-    if (error || !(data as { success?: boolean })?.success) {
-      show((data as { error?: string })?.error || error?.message || 'Payment submission failed', 'error');
-      return;
+  // Toggle allow_new_user_creation (super admin only)
+  const toggleAllowNewUserCreation = async () => {
+    const old_value = allowNewUserCreation;
+    const new_value = !old_value;
+    setSavingSystemControl(true);
+    const { error } = await api.admin.setSystemSetting({ p_key: 'allow_new_user_creation', p_value: new_value });
+    if (!error) {
+      setAllowNewUserCreation(new_value);
+      await logAudit('update', 'system_settings', 'allow_new_user_creation', { old_value, new_value });
+      await api.admin.getSystemSettings({ p_key: 'allow_new_user_creation' });
+      show(
+        isAr
+          ? new_value
+            ? 'تم تفعيل إنشاء المستخدمين الجدد'
+            : 'تم تعطيل إنشاء المستخدمين الجدد'
+          : new_value
+          ? 'New user creation enabled'
+          : 'New user creation disabled',
+        'success'
+      );
+    } else {
+      show(error.message || (isAr ? 'فشل تحديث الإعداد' : 'Failed to update setting'), 'error');
     }
-
-    show(
-      isAr
-        ? 'تم إرسال إشعار الدفع بنجاح! سيتم تفعيل الباقة فور مراجعة التحويل'
-        : 'Payment proof submitted! Subscription will be activated upon review',
-      'success'
-    );
-    setSelectedUpgradePlan(null);
-    setPaymentRef('');
-    setReceiptUrl('');
-    void loadBranchSubData();
+    setSavingSystemControl(false);
   };
 
   const SECTIONS: { key: SettingsTab; label: string; icon: React.ReactNode }[] = [
     { key: 'branch_profile', label: isAr ? 'بيانات الفرع والطباعة' : 'Branch Profile & Receipts', icon: <Store className="w-4 h-4" /> },
-    { key: 'branch_subscription', label: isAr ? 'اشتراك الفرع والترقية' : 'Branch Subscription', icon: <CreditCard className="w-4 h-4" /> },
     { key: 'branch_staff', label: isAr ? 'طاقم عمل الفرع' : 'Branch Staff', icon: <Users className="w-4 h-4" /> },
     { key: 'appearance', label: isAr ? 'المظهر والثيم' : 'Appearance & Theme', icon: <Palette className="w-4 h-4" /> },
     { key: 'language', label: isAr ? 'اللغة والتوطين' : 'Language', icon: <Languages className="w-4 h-4" /> },
+    ...(user?.role === 'super_admin'
+      ? [{ key: 'system_controls' as const, label: isAr ? 'التحكم في النظام' : 'System Controls', icon: <SlidersHorizontal className="w-4 h-4" /> }]
+      : []),
   ];
 
   return (
@@ -232,8 +199,8 @@ export function SettingsControlCenterPage() {
               </p>
               <p className="text-xs text-ui-subtle">
                 {isAr
-                  ? 'لإدارة كافة إعدادات المنشأة المركزية، المنظمات، الأسعار والاشتراكات، والصلاحيات الكاملة، تفضل بزيارة لوحة المدير العام'
-                  : 'Manage master enterprise settings, tenant organizations, subscription pricing, and full RBAC matrix in the Super Admin hub'}
+                  ? 'لإدارة كافة إعدادات المنشأة المركزية، المنظمات، والصلاحيات الكاملة، تفضل بزيارة لوحة المدير العام'
+                  : 'Manage master enterprise settings, tenant organizations, and full RBAC matrix in the Super Admin hub'}
               </p>
             </div>
           </div>
@@ -251,7 +218,7 @@ export function SettingsControlCenterPage() {
         <div>
           <h1 className="text-2xl font-black text-ui-text tracking-tight">{t('settings')}</h1>
           <p className="text-xs text-ui-subtle mt-0.5">
-            {isAr ? 'إدارة وتخصيص إعدادات الفرع، الإيصالات، المظهر، واشتراك المنشأة' : 'Manage branch configurations, receipts, appearance, and subscriptions'}
+            {isAr ? 'إدارة وتخصيص إعدادات الفرع، الإيصالات، والمظهر' : 'Manage branch configurations, receipts, and appearance'}
           </p>
         </div>
 
@@ -344,167 +311,6 @@ export function SettingsControlCenterPage() {
                 </Button>
               </div>
             </Card>
-          )}
-
-          {/* TAB: Branch Subscription */}
-          {active === 'branch_subscription' && (
-            <div className="space-y-6">
-              {/* Current Status Card */}
-              <Card className="p-6 space-y-4">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div>
-                    <h2 className="text-lg font-bold text-ui-text">{isAr ? 'حالة اشتراك الفرع الحالي' : 'Branch Subscription Status'}</h2>
-                    <p className="text-xs text-ui-subtle">{isAr ? 'تفاصيل الباقة والمميزات المتاحة لهذا الفرع' : 'Current tier and expiration details'}</p>
-                  </div>
-                  <span
-                    className={`px-3 py-1 rounded-full text-xs font-bold ${
-                      branchSubStatus?.status === 'active'
-                        ? 'bg-ui-success-soft text-ui-success'
-                        : branchSubStatus?.status === 'trial'
-                        ? 'bg-ui-info-soft text-ui-info'
-                        : 'bg-ui-danger-soft text-ui-danger'
-                    }`}
-                  >
-                    {branchSubStatus?.status === 'active'
-                      ? isAr ? 'اشتراك نشط' : 'Active Plan'
-                      : branchSubStatus?.status === 'trial'
-                      ? isAr ? 'فترة تجريبية' : 'Trial Mode'
-                      : isAr ? 'منتهي / مطلوب التجديد' : 'Past Due / Expired'}
-                  </span>
-                </div>
-
-                <div className="grid gap-4 sm:grid-cols-3 p-4 bg-ui-page rounded-2xl border border-ui-border">
-                  <div>
-                    <p className="text-xs text-ui-subtle">{isAr ? 'اسم الباقة:' : 'Current Plan:'}</p>
-                    <p className="text-base font-bold text-ui-text">
-                      {currentPlan
-                        ? isAr ? currentPlan.name_ar : currentPlan.name_en || currentPlan.name_ar
-                        : isAr ? 'الباقة الأساسية' : 'Standard'}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-ui-subtle">{isAr ? 'تاريخ الانتهاء:' : 'Expires At:'}</p>
-                    <p className="text-base font-bold text-ui-text">
-                      {branchSubStatus?.current_period_ends_at ? formatDate(branchSubStatus.current_period_ends_at, lang) : '-'}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-ui-subtle">{isAr ? 'الأيام المتبقية:' : 'Days Left:'}</p>
-                    <p className="text-base font-bold text-brand-600">
-                      {daysRemaining} {isAr ? 'يوم' : 'days'}
-                    </p>
-                  </div>
-                </div>
-              </Card>
-
-              {/* Plans & Upgrade via InstaPay */}
-              <Card className="p-6 space-y-4">
-                <h3 className="text-base font-bold text-ui-text">{isAr ? 'ترقية أو تجديد الباقة عبر InstaPay' : 'Renew or Upgrade Plan via InstaPay'}</h3>
-
-                {/* Gateway Instructions */}
-                {gatewaySettings && (
-                  <div className="p-4 rounded-2xl bg-brand-500/10 border border-brand-500/20 space-y-3">
-                    <div className="flex items-center gap-2 font-bold text-brand-600 dark:text-brand-400">
-                      <CreditCard className="w-5 h-5" />
-                      <span>{isAr ? 'بيانات التحويل عبر InstaPay' : 'InstaPay Payment Details'}</span>
-                    </div>
-                    <div className="grid gap-2 sm:grid-cols-2 text-xs">
-                      <div>
-                        <span className="text-ui-subtle">{isAr ? 'معرّف أو رقم InstaPay:' : 'InstaPay ID:'} </span>
-                        <span className="font-mono font-bold text-ui-text">{gatewaySettings.instapay_id || '-'}</span>
-                      </div>
-                      <div>
-                        <span className="text-ui-subtle">{isAr ? 'اسم المستفيد:' : 'Beneficiary:'} </span>
-                        <span className="font-bold text-ui-text">{gatewaySettings.beneficiary_name || '-'}</span>
-                      </div>
-                    </div>
-                    {gatewaySettings.instructions_ar && (
-                      <p className="text-xs text-ui-muted pt-2 border-t border-brand-500/20 whitespace-pre-line">
-                        {isAr ? gatewaySettings.instructions_ar : gatewaySettings.instructions_en || gatewaySettings.instructions_ar}
-                      </p>
-                    )}
-                  </div>
-                )}
-
-                {/* Plans Selection */}
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  {publicPlans.map((p) => (
-                    <div
-                      key={p.id}
-                      onClick={() => setSelectedUpgradePlan(p)}
-                      className={`p-4 rounded-2xl border-2 cursor-pointer transition ${
-                        selectedUpgradePlan?.id === p.id
-                          ? 'border-brand-600 bg-brand-500/5'
-                          : 'border-ui-border hover:border-ui-border/80'
-                      }`}
-                    >
-                      <h4 className="font-bold text-ui-text">{isAr ? p.name_ar : p.name_en || p.name_ar}</h4>
-                      <p className="text-xl font-black text-ui-text my-2">
-                        {formatCurrency(p.monthly_price_egp, 'EGP', lang)} <span className="text-xs text-ui-subtle font-normal">/ {isAr ? 'شهر' : 'mo'}</span>
-                      </p>
-                      <p className="text-xs text-ui-subtle">
-                        {isAr ? 'أو سنوي:' : 'Yearly:'} {formatCurrency(p.yearly_price_egp, 'EGP', lang)}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Submit Receipt Form */}
-                {selectedUpgradePlan && (
-                  <div className="p-4 rounded-2xl border border-ui-border bg-ui-page space-y-4 animate-fade-in">
-                    <h4 className="font-bold text-sm text-ui-text">
-                      {isAr ? `تأكيد طلب الاشتراك في باقة: ${selectedUpgradePlan.name_ar}` : `Submit Payment for: ${selectedUpgradePlan.name_en || selectedUpgradePlan.name_ar}`}
-                    </h4>
-
-                    <div className="flex gap-4 text-xs font-semibold">
-                      <label className="flex items-center gap-1.5 cursor-pointer">
-                        <input
-                          type="radio"
-                          name="cycle"
-                          checked={upgradeCycle === 'monthly'}
-                          onChange={() => setUpgradeCycle('monthly')}
-                        />
-                        <span>{isAr ? `شهري (${selectedUpgradePlan.monthly_price_egp} ج.م)` : `Monthly (${selectedUpgradePlan.monthly_price_egp} EGP)`}</span>
-                      </label>
-                      <label className="flex items-center gap-1.5 cursor-pointer">
-                        <input
-                          type="radio"
-                          name="cycle"
-                          checked={upgradeCycle === 'yearly'}
-                          onChange={() => setUpgradeCycle('yearly')}
-                        />
-                        <span>{isAr ? `سنوي (${selectedUpgradePlan.yearly_price_egp} ج.م)` : `Yearly (${selectedUpgradePlan.yearly_price_egp} EGP)`}</span>
-                      </label>
-                    </div>
-
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <Input
-                        label={isAr ? 'الرقم المرجعي للإشعار (Reference No.)' : 'Transaction Reference'}
-                        value={paymentRef}
-                        onChange={(e) => setPaymentRef(e.target.value)}
-                        placeholder="e.g. 123456789"
-                      />
-                      <Input
-                        label={isAr ? 'رابط صورة إيصال التحويل (Receipt URL)' : 'Receipt Image URL'}
-                        value={receiptUrl}
-                        onChange={(e) => setReceiptUrl(e.target.value)}
-                        placeholder="https://..."
-                      />
-                    </div>
-
-                    <div className="flex justify-end gap-2">
-                      <Button variant="outline" size="sm" onClick={() => setSelectedUpgradePlan(null)}>
-                        {isAr ? 'إلغاء' : 'Cancel'}
-                      </Button>
-                      <Button size="sm" onClick={submitBranchPayment} disabled={submittingPayment}>
-                        {submittingPayment ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                        <span>{isAr ? 'إرسال إشعار الدفع' : 'Submit Proof'}</span>
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              </Card>
-            </div>
           )}
 
           {/* TAB: Branch Staff */}
@@ -633,6 +439,57 @@ export function SettingsControlCenterPage() {
                 >
                   English
                 </Button>
+              </div>
+            </Card>
+          )}
+
+          {/* TAB: System Controls (Super Admin only) */}
+          {active === 'system_controls' && user?.role === 'super_admin' && (
+            <Card className="p-6 space-y-4">
+              <div>
+                <h2 className="text-lg font-bold text-ui-text">{isAr ? 'التحكم في النظام' : 'System Controls'}</h2>
+                <p className="text-xs text-ui-subtle">{isAr ? 'إعدادات وضوابط النظام العامة (متاحة للمدير العام فقط)' : 'Global system-level toggles (Super Admin only)'}</p>
+              </div>
+
+              <div className="flex items-center justify-between gap-4 p-4 rounded-2xl border border-ui-border bg-ui-page">
+                <div className="flex items-start gap-3">
+                  <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
+                    allowNewUserCreation ? 'bg-ui-success-soft text-ui-success' : 'bg-ui-danger-soft text-ui-danger'
+                  }`}>
+                    <Users className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <p className="font-bold text-sm text-ui-text">
+                      {isAr ? 'السماح بإنشاء مستخدمين جدد' : 'Allow New User Creation'}
+                    </p>
+                    <p className="text-xs text-ui-subtle mt-0.5">
+                      {allowNewUserCreation
+                        ? (isAr ? 'إنشاء مستخدمين جدد في النظام مسموح حالياً' : 'New user creation is currently allowed')
+                        : (isAr ? 'تم تعطيل إنشاء مستخدمين جدد في الوقت الحالي' : 'New user creation is currently disabled')}
+                    </p>
+                    <p className="text-xs text-ui-muted mt-1">
+                      {isAr
+                        ? 'عند الإيقاف، لن يتمكن رؤساء الفروع من إضافة موظفين أو حسابات جديدة'
+                        : 'When off, branch managers will not be able to add new staff or accounts'}
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => void toggleAllowNewUserCreation()}
+                  disabled={systemControlsLoading || savingSystemControl}
+                  role="switch"
+                  aria-checked={allowNewUserCreation}
+                  className={`relative inline-flex h-7 w-14 shrink-0 items-center rounded-full transition-colors ${
+                    allowNewUserCreation ? 'bg-ui-success' : 'bg-ui-muted/40'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+                      allowNewUserCreation ? 'translate-x-8' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
               </div>
             </Card>
           )}

@@ -27,7 +27,7 @@ describe.skipIf(skip)('procurement workflow (075)', () => {
   const branchB = randomUUID();
   const whId = randomUUID();
   const prodId = randomUUID();
-  const rmId = randomUUID();
+  const prod2Id = randomUUID();
   const adminId = randomUUID();
   const managerId = randomUUID();
   const managerBId = randomUUID();
@@ -53,7 +53,7 @@ describe.skipIf(skip)('procurement workflow (075)', () => {
     return res.rows[0].r as Record<string, unknown>;
   };
 
-  const items = (list: { product_id?: string; raw_material_id?: string; quantity: number; unit_cost?: number; estimated_cost?: number; unit_name?: string; notes?: string }[]) =>
+  const items = (list: { product_id?: string; quantity: number; unit_cost?: number; estimated_cost?: number; unit_name?: string; notes?: string }[]) =>
     JSON.stringify(list);
 
   beforeAll(async () => {
@@ -67,8 +67,7 @@ describe.skipIf(skip)('procurement workflow (075)', () => {
     await client.query(`INSERT INTO public.organizations (id, name, slug) VALUES ($1, $2, $3)`, [orgId, 'Proc Org', `proc-${randomUUID().slice(0, 8)}`]);
     await client.query(`INSERT INTO public.branches (id, name, organization_id) VALUES ($1, $2, $3), ($4, $5, $6)`, [branchA, 'Proc A', orgId, branchB, 'Proc B', orgId]);
     await client.query(`INSERT INTO public.warehouses (id, name, branch_id, is_active) VALUES ($1, $2, $3, true)`, [whId, 'Proc WH', branchA]);
-    await client.query(`INSERT INTO public.products (id, name, branch_id, sale_price, cost_price, is_active) VALUES ($1, $2, $3, 200, 50, true)`, [prodId, 'Proc Product', branchA]);
-    await client.query(`INSERT INTO public.raw_materials (id, code, name, branch_id, is_active) VALUES ($1, $2, $3, $4, true)`, [rmId, `RM-${rmId.slice(0, 8)}`, 'Proc Raw', branchA]);
+    await client.query(`INSERT INTO public.products (id, name, branch_id, sale_price, cost_price, is_active) VALUES ($1, $2, $3, 200, 50, true), ($4, $5, $6, 60, 10, true)`, [prodId, 'Proc Product', branchA, prod2Id, 'Proc Product 2', branchA]);
     await client.query(`INSERT INTO public.suppliers (id, name, branch_id, balance) VALUES ($1, $2, $3, 0), ($4, $5, $6, 0)`, [supplierA, 'Supplier A', branchA, supplierB, 'Supplier B', branchB]);
 
     const mkUser = async (id: string, role: string, branch: string | null) => {
@@ -109,7 +108,7 @@ describe.skipIf(skip)('procurement workflow (075)', () => {
         `SELECT public.create_purchase_request($1, $2, 'high', NULL, 'urgent restock', $3::jsonb) AS r`,
         [branchA, supplierA, items([
           { product_id: prodId, quantity: 10, unit_name: 'piece', estimated_cost: 90 },
-          { raw_material_id: rmId, quantity: 5, unit_name: 'kg', estimated_cost: 18 },
+          { product_id: prod2Id, quantity: 5, unit_name: 'piece', estimated_cost: 18 },
         ])],
       ),
     );
@@ -196,7 +195,7 @@ describe.skipIf(skip)('procurement workflow (075)', () => {
       call(`SELECT public.record_supplier_quotation($1, $2, NULL, 5, NULL, $3::jsonb) AS r`,
         [rfqId, supplierA, items([
           { product_id: prodId, quantity: 10, unit_cost: 95 },
-          { raw_material_id: rmId, quantity: 5, unit_cost: 20 },
+          { product_id: prod2Id, quantity: 5, unit_cost: 20 },
         ])]),
     );
     expect(q1.success).toBe(true);
@@ -278,8 +277,8 @@ describe.skipIf(skip)('procurement workflow (075)', () => {
     const po = await client.query<{ id: string; invoice_number: string }>(
       `SELECT id, invoice_number FROM public.purchases WHERE status = 'approved' AND branch_id = $1 LIMIT 1`, [branchA],
     );
-    const items = await client.query<{ id: string; product_id: string | null; raw_material_id: string | null; quantity: string; received_quantity: string }>(
-      `SELECT id, product_id, raw_material_id, quantity, received_quantity FROM public.purchase_items WHERE purchase_id = $1`, [po.rows[0].id],
+    const items = await client.query<{ id: string; product_id: string | null; quantity: string; received_quantity: string }>(
+      `SELECT id, product_id, quantity, received_quantity FROM public.purchase_items WHERE purchase_id = $1`, [po.rows[0].id],
     );
     expect(items.rows.length).toBe(1);
     const productItem = items.rows.find((i) => i.product_id === prodId)!;
