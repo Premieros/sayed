@@ -61,23 +61,8 @@ GRANT EXECUTE ON FUNCTION public.subscription_status(uuid) TO anon, authenticate
 GRANT EXECUTE ON FUNCTION public.subscription_expired(uuid) TO anon, authenticated, service_role;
 
 -- ---------------------------------------------------------------------------
--- 3. Drop subscription / billing / plan / feature-gating tables + RLS
--- ---------------------------------------------------------------------------
-DROP TABLE IF EXISTS public.subscription_events;
-DROP TABLE IF EXISTS public.branch_feature_overrides;
-DROP TABLE IF EXISTS public.subscriptions;
-DROP TABLE IF EXISTS public.plan_features;
-DROP TABLE IF EXISTS public.features;
-DROP TABLE IF EXISTS public.plan_prices;
-DROP TABLE IF EXISTS public.plans;
-
-DROP TABLE IF EXISTS public.subscription_settings;
-DROP TABLE IF EXISTS public.subscription_payments;
-DROP TABLE IF EXISTS public.branch_subscriptions;
-DROP TABLE IF EXISTS public.subscription_plans;
-
--- ---------------------------------------------------------------------------
--- 4. Drop subscription / billing / feature-gating RPCs
+-- 3. Drop subscription / billing / feature-gating RPCs BEFORE the tables they
+--    depend on (functions returning composite table types block DROP TABLE).
 -- ---------------------------------------------------------------------------
 DROP FUNCTION IF EXISTS public.activate_subscription(uuid, text, text, boolean);
 DROP FUNCTION IF EXISTS public.submit_instapay_payment(uuid, text, numeric, text, text, text);
@@ -95,6 +80,22 @@ DROP FUNCTION IF EXISTS public.get_tenant_subscription_details(uuid);
 DROP FUNCTION IF EXISTS public.super_admin_change_subscription(uuid, uuid, text, timestamptz, timestamptz);
 DROP FUNCTION IF EXISTS public.super_admin_set_branch_override(uuid, uuid, text, boolean, integer, text);
 DROP FUNCTION IF EXISTS public.super_admin_remove_branch_override(uuid, text);
+
+-- ---------------------------------------------------------------------------
+-- 4. Drop subscription / billing / plan / feature-gating tables + RLS
+-- ---------------------------------------------------------------------------
+DROP TABLE IF EXISTS public.subscription_events;
+DROP TABLE IF EXISTS public.branch_feature_overrides;
+DROP TABLE IF EXISTS public.subscriptions;
+DROP TABLE IF EXISTS public.plan_features;
+DROP TABLE IF EXISTS public.features;
+DROP TABLE IF EXISTS public.plan_prices;
+DROP TABLE IF EXISTS public.plans;
+
+DROP TABLE IF EXISTS public.subscription_settings;
+DROP TABLE IF EXISTS public.subscription_payments;
+DROP TABLE IF EXISTS public.branch_subscriptions;
+DROP TABLE IF EXISTS public.subscription_plans;
 
 -- ---------------------------------------------------------------------------
 -- 5. register_tenant WITHOUT the trial-subscription row (keeps multi-tenant)
