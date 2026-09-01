@@ -17,8 +17,6 @@ export const APP_ROUTES = {
   components: '/components',
   inventory: '/inventory',
   warehouses: '/warehouses',
-  rawMaterials: '/raw-materials',
-  recipes: '/recipes',
   transfers: '/transfers',
   inventoryLedger: '/inventory-ledger',
   stockCounts: '/stock-counts',

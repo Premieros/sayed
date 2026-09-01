@@ -3,13 +3,17 @@ import { randomUUID } from 'node:crypto';
 import { getDbUrl, openDb } from './db';
 import type pg from 'pg';
 
-// Integration coverage for migration 074 (P0 item 2 — Product / Recipe Costing):
+// Integration coverage for migration 074 (P0 item 2 — Product Costing):
 //
 //   product_cost_history table + track_product_cost_history trigger, and the
 //   branch-scoped SECURITY DEFINER RPCs get_costing_overview,
 //   get_product_costing_detail, get_cost_history, get_order_margin and
-//   get_supplier_price_impact (raw-material side; the product side is already
-//   covered by procurement_workflow.test.ts).
+//   get_supplier_price_impact.
+//
+// Costing is product-only after the manufacturing removal: unit_cost comes
+// from the inventory_batches weighted average (_product_wavg_cost) and the
+// theoretical/actual cost from the product_components BOM (_product_bom_cost).
+// recipe_items is always [] — the recipes subsystem is gone.
 //
 // Every RPC is branch-scoped: non-admins are locked to their own branch via
 // is_pos_admin(), admins may pass NULL (all branches) or a specific branch.
@@ -27,9 +31,8 @@ describe.skipIf(skip)('product costing RPCs (074)', () => {
   const branchB = randomUUID();
   const whId = randomUUID();
   const prodId = randomUUID();
-  const prodNoRecipe = randomUUID();
-  const rmId = randomUUID();
-  const recipeId = randomUUID();
+  const prodNoBom = randomUUID();
+  const compProd = randomUUID();
   const adminId = randomUUID();
   const managerId = randomUUID();
   const managerBId = randomUUID();
@@ -61,12 +64,12 @@ describe.skipIf(skip)('product costing RPCs (074)', () => {
     await client.query(`INSERT INTO public.organizations (id, name, slug) VALUES ($1, $2, $3)`, [orgId, 'PC Org', `pc-${randomUUID().slice(0, 8)}`]);
     await client.query(`INSERT INTO public.branches (id, name, organization_id) VALUES ($1, $2, $3), ($4, $5, $6)`, [branchA, 'Cost A', orgId, branchB, 'Cost B', orgId]);
     await client.query(`INSERT INTO public.warehouses (id, name, branch_id, is_active) VALUES ($1, $2, $3, true)`, [whId, 'Cost WH', branchA]);
-    await client.query(`INSERT INTO public.products (id, name, branch_id, sale_price, cost_price, is_active) VALUES ($1, $2, $3, 100, 30, true), ($4, $5, $6, 80, 20, true)`, [prodId, 'Cost Product', branchA, prodNoRecipe, 'Cost NoRecipe', branchA]);
-    await client.query(`INSERT INTO public.raw_materials (id, code, name, branch_id, default_cost, is_active) VALUES ($1, $2, $3, $4, 15, true)`, [rmId, `RM-${rmId.slice(0, 8)}`, 'Cost Raw', branchA]);
+    await client.query(`INSERT INTO public.products (id, name, branch_id, sale_price, cost_price, is_active) VALUES ($1, $2, $3, 100, 30, true), ($4, $5, $6, 80, 20, true), ($7, $8, $9, 20, 5, false)`, [prodId, 'Cost Product', branchA, prodNoBom, 'Cost NoBom', branchA, compProd, 'Cost Component', branchA]);
+    await client.query(`INSERT INTO public.product_components (product_id, component_product_id, quantity) VALUES ($1, $2, 1)`, [prodId, compProd]);
+    // compProd already carries a 10 @ 20 opening batch -> wavg 20; prodId a 5 @ 30 -> wavg 30.
+    await client.query(`INSERT INTO public.inventory_batches (product_id, warehouse_id, branch_id, quantity, unit_cost, source_type) VALUES ($1, $2, $3, 10, 20, 'opening')`, [compProd, whId, branchA]);
+    await client.query(`INSERT INTO public.inventory_batches (product_id, warehouse_id, branch_id, quantity, unit_cost, source_type) VALUES ($1, $2, $3, 5, 30, 'opening')`, [prodId, whId, branchA]);
     await client.query(`INSERT INTO public.suppliers (id, name, branch_id, balance) VALUES ($1, $2, $3, 0)`, [supplierA, 'Cost Supplier', branchA]);
-    await client.query(`INSERT INTO public.recipes (id, product_id, branch_id, name, yield_quantity, is_active) VALUES ($1, $2, $3, 'Recipe', 2, true)`, [recipeId, prodId, branchA]);
-    await client.query(`INSERT INTO public.recipe_items (recipe_id, raw_material_id, quantity, wastage_percent) VALUES ($1, $2, 1, 10)`, [recipeId, rmId]);
-    await client.query(`INSERT INTO public.raw_material_batches (raw_material_id, branch_id, quantity, unit_cost, source_type) VALUES ($1, $2, 10, 20, 'purchase')`, [rmId, branchA]);
 
     const mkUser = async (id: string, role: string, branch: string | null) => {
       const uname = `costu-${randomUUID().slice(0, 8)}`;
@@ -88,43 +91,41 @@ describe.skipIf(skip)('product costing RPCs (074)', () => {
     }
   });
 
-  it('get_costing_overview: recipe cost math (avg batch cost x (1 + wastage) x qty)', async () => {
+  it('get_costing_overview: BOM cost math (component wavg x qty), recipe leg is gone', async () => {
     const overview = await asUser(adminId, async () =>
-      rows<{ product_id: string; actual_cost: string; theoretical_cost: string; sale_price: string; recipe_item_count: string }>(
-        `SELECT product_id, actual_cost, theoretical_cost, sale_price, recipe_item_count FROM public.get_costing_overview(NULL) WHERE product_id = $1`, [prodId],
+      rows<{ product_id: string; actual_cost: string; theoretical_cost: string; unit_cost: string; sale_price: string; component_count: string; recipe_item_count: string }>(
+        `SELECT product_id, actual_cost, theoretical_cost, unit_cost, sale_price, component_count, recipe_item_count FROM public.get_costing_overview(NULL) WHERE product_id = $1`, [prodId],
       ),
     );
     expect(overview.length).toBe(1);
-    expect(Number(overview[0].actual_cost)).toBe(22); // 1 x 1.1 x 20 (batch avg cost), no yield division
-    expect(Number(overview[0].theoretical_cost)).toBe(0); // no product_components BOM
+    expect(Number(overview[0].unit_cost)).toBe(30); // product's own batch wavg
+    expect(Number(overview[0].actual_cost)).toBe(20); // 1 x component wavg
+    expect(Number(overview[0].theoretical_cost)).toBe(20);
     expect(Number(overview[0].sale_price)).toBe(100);
-    expect(Number(overview[0].recipe_item_count)).toBe(1);
+    expect(Number(overview[0].component_count)).toBe(1);
+    expect(Number(overview[0].recipe_item_count)).toBe(0);
 
-    // Product without a recipe has zero recipe cost and a 0 item count.
-    const noRecipe = await asUser(adminId, async () =>
-      rows<{ product_id: string; actual_cost: string; recipe_item_count: string }>(
-        `SELECT product_id, actual_cost, recipe_item_count FROM public.get_costing_overview(NULL) WHERE product_id = $1`, [prodNoRecipe],
+    // Product without a BOM has zero component cost and a 0 component count.
+    const noBom = await asUser(adminId, async () =>
+      rows<{ product_id: string; actual_cost: string; component_count: string }>(
+        `SELECT product_id, actual_cost, component_count FROM public.get_costing_overview(NULL) WHERE product_id = $1`, [prodNoBom],
       ),
     );
-    expect(Number(noRecipe[0].actual_cost)).toBe(0);
-    expect(Number(noRecipe[0].recipe_item_count)).toBe(0);
+    expect(Number(noBom[0].actual_cost)).toBe(0);
+    expect(Number(noBom[0].component_count)).toBe(0);
   });
 
-  it('_raw_wavg_cost falls back to raw_materials.default_cost when no batches exist', async () => {
+  it('_product_wavg_cost returns the batch weighted average (0 with no batches)', async () => {
     const wavg = await client.query<{ wavg: string }>(
-      `SELECT round(public._raw_wavg_cost($1, $2), 2) AS wavg FROM public.raw_materials WHERE id = $1`, [rmId, branchA],
+      `SELECT round(public._product_wavg_cost($1, $2), 2) AS wavg`, [compProd, branchA],
     );
-    expect(Number(wavg.rows[0].wavg)).toBe(20); // from the seeded batch
+    expect(Number(wavg.rows[0].wavg)).toBe(20); // from the seeded opening batch
 
-    // A raw material with no batches (tmp) resolves to its default_cost.
-    const tmp = await client.query<{ id: string }>(
-      `INSERT INTO public.raw_materials (id, code, name, branch_id, default_cost, is_active) VALUES ($1, 'TMPRM', 'Tmp', $2, 7, true) RETURNING id`,
-      [randomUUID(), branchA],
+    // A product with no batches has no weighted-average cost.
+    const noBatches = await client.query<{ wavg: string }>(
+      `SELECT round(public._product_wavg_cost($1, $2), 2) AS wavg`, [prodNoBom, branchA],
     );
-    const fallback = await client.query<{ wavg: string }>(
-      `SELECT round(public._raw_wavg_cost($1, $2), 2) AS wavg`, [tmp.rows[0].id, branchA],
-    );
-    expect(Number(fallback.rows[0].wavg)).toBe(7);
+    expect(Number(noBatches.rows[0].wavg)).toBe(0);
   });
 
   it('get_costing_overview: branch isolation for non-admins', async () => {
@@ -133,7 +134,7 @@ describe.skipIf(skip)('product costing RPCs (074)', () => {
       rows<{ product_id: string }>(`SELECT product_id FROM public.get_costing_overview(NULL)`),
     );
     expect(inBranch.some((r) => r.product_id === prodId)).toBe(true);
-    expect(inBranch.length).toBe(2); // both seeded products live in branch A
+    expect(inBranch.length).toBe(2); // both active seeded products live in branch A
 
     // Branch B manager sees neither product.
     const outBranch = await asUser(managerBId, async () =>
@@ -148,18 +149,20 @@ describe.skipIf(skip)('product costing RPCs (074)', () => {
     expect(adminB.length).toBe(0);
   });
 
-  it('get_product_costing_detail: recipe lines, batch-cost fallback and error on missing product', async () => {
+  it('get_product_costing_detail: component lines, batch-cost and error on missing product', async () => {
     const detail = await asUser(managerId, async () =>
-      rows<{ r: { success: boolean; product_name: string; actual_cost: number; recipe_items: Array<{ line_cost: number; unit_cost: number }>; history: unknown[] } }>(
+      rows<{ r: { success: boolean; product_name: string; actual_cost: number; components: Array<{ component_name: string; unit_cost: number; line_cost: number }>; recipe_items: unknown[] } }>(
         `SELECT public.get_product_costing_detail($1, NULL) AS r`, [prodId],
       ),
     );
     expect(detail[0].r.success).toBe(true);
     expect(detail[0].r.product_name).toBe('Cost Product');
-    expect(Number(detail[0].r.actual_cost)).toBe(22);
-    expect(detail[0].r.recipe_items.length).toBe(1);
-    expect(Number(detail[0].r.recipe_items[0].unit_cost)).toBe(20);
-    expect(Number(detail[0].r.recipe_items[0].line_cost)).toBe(22);
+    expect(Number(detail[0].r.actual_cost)).toBe(20);
+    expect(detail[0].r.components.length).toBe(1);
+    expect(detail[0].r.components[0].component_name).toBe('Cost Component');
+    expect(Number(detail[0].r.components[0].unit_cost)).toBe(20);
+    expect(Number(detail[0].r.components[0].line_cost)).toBe(20);
+    expect(detail[0].r.recipe_items).toHaveLength(0);
 
     const missing = await asUser(managerId, async () =>
       rows<{ r: { success: boolean; error: string } }>(
@@ -219,7 +222,7 @@ describe.skipIf(skip)('product costing RPCs (074)', () => {
     expect(out.length).toBe(0);
   });
 
-  it('get_supplier_price_impact returns raw-material price history for the branch', async () => {
+  it('get_supplier_price_impact returns product price history for the branch', async () => {
     await client.query(
       `INSERT INTO public.purchases (id, invoice_number, supplier_id, branch_id, warehouse_id, subtotal, discount_amount, tax_amount, total, paid_amount, payment_method, status)
        VALUES ($1, 'COSTPO', $2, $3, $4, 0, 0, 0, 0, 0, 'cash', 'completed')`,
@@ -229,18 +232,18 @@ describe.skipIf(skip)('product costing RPCs (074)', () => {
       `SELECT id FROM public.purchases WHERE supplier_id = $1 AND branch_id = $2 ORDER BY created_at DESC LIMIT 1`, [supplierA, branchA],
     );
     await client.query(
-      `INSERT INTO public.purchase_items (purchase_id, raw_material_id, unit_name, quantity, unit_cost, total)
-       VALUES ($1, $2, 'kg', 5, 18, 90)`,
-      [purch.rows[0].id, rmId],
+      `INSERT INTO public.purchase_items (purchase_id, product_id, unit_name, quantity, unit_cost, total)
+       VALUES ($1, $2, 'piece', 5, 18, 90)`,
+      [purch.rows[0].id, prodId],
     );
 
     const impact = await asUser(managerId, async () =>
       rows<{ item_id: string; item_type: string; first_cost: string; last_cost: string; avg_cost: string; purchase_count: string }>(
-        `SELECT item_id, item_type, first_cost, last_cost, avg_cost, purchase_count FROM public.get_supplier_price_impact($1) WHERE item_id = $2`, [supplierA, rmId],
+        `SELECT item_id, item_type, first_cost, last_cost, avg_cost, purchase_count FROM public.get_supplier_price_impact($1) WHERE item_id = $2`, [supplierA, prodId],
       ),
     );
     expect(impact.length).toBe(1);
-    expect(impact[0].item_type).toBe('raw_material');
+    expect(impact[0].item_type).toBe('product');
     expect(Number(impact[0].first_cost)).toBe(18);
     expect(Number(impact[0].last_cost)).toBe(18);
     expect(Number(impact[0].avg_cost)).toBe(18);

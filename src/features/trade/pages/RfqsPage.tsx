@@ -16,28 +16,24 @@ import { useCan } from '@/lib/permissions';
 import { useBranches } from '@/hooks/useBranches';
 import { usePaginatedRows } from '@/hooks/usePaginatedRows';
 import { useSettings } from '@/context/SettingsContext';
-import type { Supplier, Product, RawMaterial, RpcResult, RfqRow, RfqComparisonRow, ProcurementLineInput, PurchaseRequestRow } from '@/lib/types';
+import type { Supplier, Product, RpcResult, RfqRow, RfqComparisonRow, ProcurementLineInput, PurchaseRequestRow } from '@/lib/types';
 
 interface RfqFormItem {
-  line_type: 'product' | 'raw';
   product_id: string;
-  raw_material_id: string;
   quantity: number;
   unit_name: string;
   notes: string;
 }
 
-const EMPTY_LINE: RfqFormItem = { line_type: 'product', product_id: '', raw_material_id: '', unit_name: 'piece', quantity: 1, notes: '' };
+const EMPTY_LINE: RfqFormItem = { product_id: '', unit_name: 'piece', quantity: 1, notes: '' };
 
 interface QuotationFormItem {
-  line_type: 'product' | 'raw';
   product_id: string;
-  raw_material_id: string;
   quantity: number;
   unit_cost: number;
 }
 
-const EMPTY_QUOTE_LINE: QuotationFormItem = { line_type: 'product', product_id: '', raw_material_id: '', quantity: 1, unit_cost: 0 };
+const EMPTY_QUOTE_LINE: QuotationFormItem = { product_id: '', quantity: 1, unit_cost: 0 };
 
 const STATUS_STYLES: Record<string, string> = {
   draft: 'bg-ui-page-alt text-ui-muted',
@@ -65,7 +61,6 @@ export function RfqsPage() {
   });
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
-  const [rawMaterials, setRawMaterials] = useState<RawMaterial[]>([]);
   const [requests, setRequests] = useState<PurchaseRequestRow[]>([]);
   const [search, setSearch] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
@@ -91,15 +86,13 @@ export function RfqsPage() {
   const [quoteItems, setQuoteItems] = useState<QuotationFormItem[]>([{ ...EMPTY_QUOTE_LINE }]);
 
   async function loadMeta() {
-    const [s, pr, rm, rq] = await Promise.all([
+    const [s, pr, rq] = await Promise.all([
       supabase.from('suppliers').select('*').order('name'),
       supabase.from('products').select('*').eq('is_active', true).order('name'),
-      supabase.from('raw_materials').select('*').eq('is_active', true).order('name'),
       supabase.from('purchase_requests').select('*').eq('status', 'approved').order('request_number', { ascending: false }),
     ]);
     setSuppliers((s.data as Supplier[]) || []);
     setProducts((pr.data as Product[]) || []);
-    setRawMaterials((rm.data as RawMaterial[]) || []);
     setRequests((rq.data as PurchaseRequestRow[]) || []);
   }
   useEffect(() => { loadMeta(); }, []);
@@ -118,7 +111,7 @@ export function RfqsPage() {
 
   const save = async () => {
     if (!form.branch_id) { show(t('required') + ': ' + t('branch'), 'error'); return; }
-    const validItems = lineItems.filter((l) => (l.line_type === 'product' ? l.product_id : l.raw_material_id) && l.quantity > 0);
+    const validItems = lineItems.filter((l) => l.product_id && l.quantity > 0);
     if (!form.request_id && validItems.length === 0) { show(t('required') + ': ' + t('addItem'), 'error'); return; }
 
     setSaving(true);
@@ -128,7 +121,7 @@ export function RfqsPage() {
       p_due_date: form.due_date || null,
       p_notes: form.notes || null,
       p_items: validItems.map((i): ProcurementLineInput => ({
-        ...(i.line_type === 'product' ? { product_id: i.product_id } : { raw_material_id: i.raw_material_id }),
+        product_id: i.product_id,
         quantity: i.quantity,
         unit_name: i.unit_name,
         notes: i.notes || null,
@@ -165,7 +158,7 @@ export function RfqsPage() {
   const saveQuotation = async () => {
     if (!quoteModal) return;
     if (!quoteForm.supplier_id) { show(t('required') + ': ' + t('supplier'), 'error'); return; }
-    const validItems = quoteItems.filter((l) => (l.line_type === 'product' ? l.product_id : l.raw_material_id) && l.quantity > 0);
+    const validItems = quoteItems.filter((l) => l.product_id && l.quantity > 0);
     if (validItems.length === 0) { show(t('required') + ': ' + t('addItem'), 'error'); return; }
 
     setSaving(true);
@@ -176,7 +169,7 @@ export function RfqsPage() {
       p_delivery_days: quoteForm.delivery_days ? parseInt(quoteForm.delivery_days, 10) : null,
       p_notes: quoteForm.notes || null,
       p_items: validItems.map((i): ProcurementLineInput => ({
-        ...(i.line_type === 'product' ? { product_id: i.product_id } : { raw_material_id: i.raw_material_id }),
+        product_id: i.product_id,
         quantity: i.quantity,
         unit_cost: i.unit_cost,
       })),
@@ -278,22 +271,11 @@ export function RfqsPage() {
             <div className="space-y-2">
               {lineItems.map((l, i) => (
                 <div key={i} className="grid grid-cols-12 gap-2 items-center">
-                  <select value={l.line_type} onChange={(e) => updateLine(i, 'line_type', e.target.value)} className="col-span-2 rounded-md border border-ui-border bg-ui-surface px-2 py-1.5 text-sm">
-                    <option value="product">{t('product')}</option>
-                    <option value="raw">{t('rawMaterial')}</option>
-                  </select>
-                  <div className="col-span-4">
-                    {l.line_type === 'product' ? (
-                      <select value={l.product_id} onChange={(e) => updateLine(i, 'product_id', e.target.value)} className="w-full rounded-md border border-ui-border bg-ui-surface px-2 py-1.5 text-sm">
-                        <option value="">--</option>
-                        {products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                      </select>
-                    ) : (
-                      <select value={l.raw_material_id} onChange={(e) => updateLine(i, 'raw_material_id', e.target.value)} className="w-full rounded-md border border-ui-border bg-ui-surface px-2 py-1.5 text-sm">
-                        <option value="">--</option>
-                        {rawMaterials.map((rm) => <option key={rm.id} value={rm.id}>{rm.name}</option>)}
-                      </select>
-                    )}
+                  <div className="col-span-6">
+                    <select value={l.product_id} onChange={(e) => updateLine(i, 'product_id', e.target.value)} className="w-full rounded-md border border-ui-border bg-ui-surface px-2 py-1.5 text-sm">
+                      <option value="">--</option>
+                      {products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    </select>
                   </div>
                   <input type="number" placeholder={t('quantity')} value={l.quantity || ''} onChange={(e) => updateLine(i, 'quantity', parseFloat(e.target.value) || 0)} className="col-span-2 rounded-md border border-ui-border bg-ui-surface px-2 py-1.5 text-sm" />
                   <input type="text" placeholder={t('notes')} value={l.notes} onChange={(e) => updateLine(i, 'notes', e.target.value)} className="col-span-3 rounded-md border border-ui-border bg-ui-surface px-2 py-1.5 text-sm" />
@@ -333,22 +315,11 @@ export function RfqsPage() {
               <div className="space-y-2">
                 {quoteItems.map((l, i) => (
                   <div key={i} className="grid grid-cols-12 gap-2 items-center">
-                    <select value={l.line_type} onChange={(e) => updateQuoteLine(i, 'line_type', e.target.value)} className="col-span-2 rounded-md border border-ui-border bg-ui-surface px-2 py-1.5 text-sm">
-                      <option value="product">{t('product')}</option>
-                      <option value="raw">{t('rawMaterial')}</option>
-                    </select>
-                    <div className="col-span-4">
-                      {l.line_type === 'product' ? (
-                        <select value={l.product_id} onChange={(e) => updateQuoteLine(i, 'product_id', e.target.value)} className="w-full rounded-md border border-ui-border bg-ui-surface px-2 py-1.5 text-sm">
-                          <option value="">--</option>
-                          {products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                        </select>
-                      ) : (
-                        <select value={l.raw_material_id} onChange={(e) => updateQuoteLine(i, 'raw_material_id', e.target.value)} className="w-full rounded-md border border-ui-border bg-ui-surface px-2 py-1.5 text-sm">
-                          <option value="">--</option>
-                          {rawMaterials.map((rm) => <option key={rm.id} value={rm.id}>{rm.name}</option>)}
-                        </select>
-                      )}
+                    <div className="col-span-6">
+                      <select value={l.product_id} onChange={(e) => updateQuoteLine(i, 'product_id', e.target.value)} className="w-full rounded-md border border-ui-border bg-ui-surface px-2 py-1.5 text-sm">
+                        <option value="">--</option>
+                        {products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                      </select>
                     </div>
                     <input type="number" placeholder={t('quantity')} value={l.quantity || ''} onChange={(e) => updateQuoteLine(i, 'quantity', parseFloat(e.target.value) || 0)} className="col-span-2 rounded-md border border-ui-border bg-ui-surface px-2 py-1.5 text-sm" />
                     <input type="number" placeholder={t('unitCost')} step="0.01" value={l.unit_cost || ''} onChange={(e) => updateQuoteLine(i, 'unit_cost', parseFloat(e.target.value) || 0)} className="col-span-3 rounded-md border border-ui-border bg-ui-surface px-2 py-1.5 text-sm" />

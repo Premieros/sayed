@@ -15,7 +15,7 @@ const excelSource = read('src/lib/excel.ts');
 
 const OPERATIONAL_KEYS = [
   'sales', 'sales_by_payment', 'sales_by_employee', 'sales_by_product', 'detailed_invoices',
-  'purchases', 'expenses', 'profit', 'inventory', 'component_consumption', 'recipe_costs',
+  'purchases', 'expenses', 'profit', 'inventory', 'component_consumption',
   'top_consumed_components', 'top_consumed_products', 'low_stock',
 ];
 
@@ -25,7 +25,7 @@ const FINANCIAL_KEYS = [
 ];
 
 describe('Reports Center contract (6H-P4)', () => {
-  it('provides a report-type dropdown covering all 14 operational types', () => {
+  it('provides a report-type dropdown covering all 13 operational types', () => {
     expect(reportFilterBarSource).toContain('data-testid="report-type-select"');
     expect(reportFilterBarSource).toContain('data-testid="report-context-filter"');
     expect(reportFilterBarSource).toContain('key={rt.key} value={rt.key}');

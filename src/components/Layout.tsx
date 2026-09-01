@@ -2,7 +2,7 @@ import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   Activity, AlertTriangle, ArrowLeftRight, BarChart3, BadgeDollarSign, Boxes, BookOpenText, Building2, Calculator, ChefHat,
-  ChevronDown, ClipboardCheck, FileSpreadsheet, FileText, FlaskConical,
+  ChevronDown, ClipboardCheck, FileSpreadsheet, FileText,
   Globe, HandCoins, Landmark, Layers, LayoutDashboard, LogOut, Menu, Moon, NotebookPen,
   Package, Receipt, Scale, ScrollText, Settings, ShoppingCart, SlidersHorizontal, Sparkles, Store, Sun,
   Tags, Timer, Truck, UserCog, Users, Wallet, Warehouse, X,
@@ -28,8 +28,6 @@ const ICONS: Record<MenuIcon, ReactNode> = {
   products: <Package className="h-5 w-5" />,
   categories: <Tags className="h-5 w-5" />,
   components: <Layers className="h-5 w-5" />,
-  rawMaterials: <FlaskConical className="h-5 w-5" />,
-  recipes: <ChefHat className="h-5 w-5" />,
   inventory: <Boxes className="h-5 w-5" />,
   warehouses: <Warehouse className="h-5 w-5" />,
   transfers: <ArrowLeftRight className="h-5 w-5" />,

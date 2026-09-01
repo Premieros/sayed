@@ -132,8 +132,6 @@ import { PaymentsPage } from '@/features/accounting/pages/PaymentsPage';
 import { TreasuryPage } from '@/features/accounting/pages/TreasuryPage';
 import { ReconciliationPage } from '@/features/accounting/pages/ReconciliationPage';
 import { JournalPage } from '@/features/accounting/pages/JournalPage';
-import { RecipesPage } from '@/features/manufacturing/pages/RecipesPage';
-import { RawMaterialsPage } from '@/features/manufacturing/pages/RawMaterialsPage';
 import { ComponentsPage } from '@/features/catalog/pages/ComponentsPage';
 import { ActiveOrdersPage } from '@/features/pos/pages/ActiveOrdersPage';
 
@@ -208,8 +206,6 @@ const pageSurfaceCases: Array<[string, React.ComponentType, string, string]> = [
   ['TreasuryPage', TreasuryPage, 'treasury-page', ''],
   ['ReconciliationPage', ReconciliationPage, 'reconciliation-page', ''],
   ['JournalPage', JournalPage, 'journal-page', 'journal-search'],
-  ['RecipesPage', RecipesPage, 'recipes-page', 'recipes-search'],
-  ['RawMaterialsPage', RawMaterialsPage, 'raw-materials-page', 'raw-materials-search'],
   ['ComponentsPage', ComponentsPage, 'components-page', ''],
   ['ActiveOrdersPage', ActiveOrdersPage, 'active-orders-page', ''],
 ];

@@ -12,18 +12,8 @@ export interface UnitDeduction {
   unit_type: 'ready' | 'manufactured';
 }
 
-export interface RawMaterialDeduction {
-  raw_material_id: string;
-  raw_material_name: string;
-  quantity: number;
-  unit_id: string;
-  unit_name: string;
-}
-
 export interface DeductionResult {
   units_deducted: UnitDeduction[];
-  /** Raw materials are intentionally never mutated by sale deduction. */
-  raw_materials_deducted: RawMaterialDeduction[];
   errors: string[];
 }
 
@@ -32,7 +22,6 @@ export interface DeductionResult {
  *
  * All stock validation, FIFO locking, batch updates, and ledger entries are
  * executed atomically in the database RPC `deduct_sale_unit_inventory`.
- * Raw materials are consumed only by manufacturing operations.
  */
 export async function deductSaleInventory(
   branch_id: string,
@@ -43,7 +32,6 @@ export async function deductSaleInventory(
 ): Promise<DeductionResult> {
   const empty: DeductionResult = {
     units_deducted: [],
-    raw_materials_deducted: [],
     errors: [],
   };
 
@@ -67,7 +55,6 @@ export async function deductSaleInventory(
   const result = (data ?? {}) as {
     success?: boolean;
     units_deducted?: UnitDeduction[];
-    raw_materials_deducted?: RawMaterialDeduction[];
     errors?: string[];
     error?: string;
     detail?: string;
@@ -76,14 +63,12 @@ export async function deductSaleInventory(
   if (!result.success) {
     return {
       units_deducted: result.units_deducted ?? [],
-      raw_materials_deducted: [],
       errors: [result.error ?? result.detail ?? 'Unit sale deduction failed'],
     };
   }
 
   return {
     units_deducted: result.units_deducted ?? [],
-    raw_materials_deducted: [],
     errors: result.errors ?? [],
   };
 }

@@ -69,15 +69,15 @@ describe('Phase 4 — center discoverability', () => {
     }
   });
 
-  it('Raw Materials and Recipes are exposed in the sidebar catalog', () => {
-    const raw = MENU_ITEMS.find((i) => i.id === 'raw-materials');
-    const recipe = MENU_ITEMS.find((i) => i.id === 'recipes');
-    expect(raw).toBeDefined();
-    expect(raw!.route).toBe(APP_ROUTES.rawMaterials);
-    expect(raw!.permission).toBe('raw_materials.view');
-    expect(recipe).toBeDefined();
-    expect(recipe!.route).toBe(APP_ROUTES.recipes);
-    expect(recipe!.permission).toBe('recipes.view');
+  it('Components and Inventory Units are exposed in the sidebar catalog', () => {
+    const components = MENU_ITEMS.find((i) => i.id === 'components');
+    const units = MENU_ITEMS.find((i) => i.id === 'inventory-units');
+    expect(components).toBeDefined();
+    expect(components!.route).toBe(APP_ROUTES.components);
+    expect(components!.permission).toBe('components.view');
+    expect(units).toBeDefined();
+    expect(units!.route).toBe(APP_ROUTES.inventoryUnits);
+    expect(units!.permission).toBe('inventory.manage');
   });
 
   it('Procurement Center exposes requests, RFQs, and receiving', () => {
@@ -109,25 +109,11 @@ describe('Phase 4 — feature discoverability', () => {
     return source.includes(`APP_ROUTES.${routeKey}`);
   }
 
-  it('Raw Materials is in the sidebar menu', () => {
-    const item = MENU_ITEMS.find((i) => i.id === 'raw-materials');
-    expect(item).toBeDefined();
-    expect(item!.route).toBe(APP_ROUTES.rawMaterials);
-    expect(item!.permission).toBe('raw_materials.view');
-  });
-
   it('Inventory Units is in the sidebar menu', () => {
     const item = MENU_ITEMS.find((i) => i.id === 'inventory-units');
     expect(item).toBeDefined();
     expect(item!.route).toBe(APP_ROUTES.inventoryUnits);
-    expect(item!.permission).toBe('raw_materials.view');
-  });
-
-  it('Recipes are in the sidebar menu', () => {
-    const item = MENU_ITEMS.find((i) => i.id === 'recipes');
-    expect(item).toBeDefined();
-    expect(item!.route).toBe(APP_ROUTES.recipes);
-    expect(item!.permission).toBe('recipes.view');
+    expect(item!.permission).toBe('inventory.manage');
   });
 
   it('Warehouses are accessible from Inventory Center', () => {
@@ -169,8 +155,8 @@ describe('Phase 4 — command palette', () => {
   it('Command palette searches across all major sections', () => {
     const source = read('src/components/CommandPalette.tsx');
     const expectedLabels = [
-      'المواد الخام', 'Raw Materials',
-      'الوصفات', 'Recipes',
+      'وحدات المخزون', 'Inventory Units',
+      'التشغيلات والصلاحية', 'Batches & Expiry',
       'الجرد', 'Stock Counts',
       'التحويلات', 'Transfers',
       'المشتريات', 'Purchases',
@@ -228,8 +214,6 @@ describe('Phase 4 — no duplicate destinations', () => {
       APP_ROUTES.inventoryUnits,
       APP_ROUTES.inventory,
       APP_ROUTES.warehouses,
-      APP_ROUTES.rawMaterials,
-      APP_ROUTES.recipes,
       APP_ROUTES.transfers,
       APP_ROUTES.inventoryLedger,
       APP_ROUTES.stockCounts,

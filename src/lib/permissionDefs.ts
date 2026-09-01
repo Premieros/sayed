@@ -30,8 +30,6 @@ export type Permission =
   | 'inventory.view' | 'inventory.manage'
   | 'inventory.transfers' | 'inventory.transfers.approve'
   | 'inventory.ledger.view'
-  | 'raw_materials.view' | 'raw_materials.manage'
-  | 'recipes.view' | 'recipes.manage'
   | 'warehouses.view' | 'warehouses.manage'
   | 'customers.view' | 'customers.manage'
   | 'suppliers.view' | 'suppliers.manage'
@@ -68,8 +66,6 @@ export const ALL_PERMISSIONS: Permission[] = [
   'inventory.view', 'inventory.manage',
   'inventory.transfers', 'inventory.transfers.approve',
   'inventory.ledger.view',
-  'raw_materials.view', 'raw_materials.manage',
-  'recipes.view', 'recipes.manage',
   'warehouses.view', 'warehouses.manage',
   'customers.view', 'customers.manage',
   'suppliers.view', 'suppliers.manage',
@@ -124,10 +120,6 @@ export const PERMISSION_LABELS: Record<Permission, { ar: string; en: string }> =
   'inventory.transfers': { ar: 'إنشاء تحويلات المخازن', en: 'Create Warehouse Transfers' },
   'inventory.transfers.approve': { ar: 'اعتماد تحويلات المخازن', en: 'Approve Warehouse Transfers' },
   'inventory.ledger.view': { ar: 'عرض دفتر المخزون', en: 'View Inventory Ledger' },
-  'raw_materials.view': { ar: 'عرض المواد الخام', en: 'View Raw Materials' },
-  'raw_materials.manage': { ar: 'إدارة المواد الخام', en: 'Manage Raw Materials' },
-  'recipes.view': { ar: 'عرض الوصفات', en: 'View Recipes' },
-  'recipes.manage': { ar: 'إدارة الوصفات', en: 'Manage Recipes' },
   'warehouses.view': { ar: 'عرض المخازن', en: 'View Warehouses' },
   'warehouses.manage': { ar: 'إدارة المخازن', en: 'Manage Warehouses' },
   'customers.view': { ar: 'عرض العملاء', en: 'View Customers' },
@@ -211,18 +203,6 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
       'inventory.transfers', 'inventory.transfers.approve',
       'inventory.ledger.view',
     ],
-  },
-  {
-    key: 'raw_materials',
-    ar: 'المواد الخام',
-    en: 'Raw Materials',
-    permissions: ['raw_materials.view', 'raw_materials.manage'],
-  },
-  {
-    key: 'recipes',
-    ar: 'الوصفات',
-    en: 'Recipes',
-    permissions: ['recipes.view', 'recipes.manage'],
   },
   {
     key: 'warehouses',

@@ -27,8 +27,6 @@ export function useOperationalGuard() {
         suppliersCount: customCtx.suppliersCount,
         customersCount: customCtx.customersCount,
         productsCount: customCtx.productsCount,
-        rawMaterialsCount: customCtx.rawMaterialsCount,
-        recipesCount: customCtx.recipesCount,
         unitsCount: customCtx.unitsCount,
         categoriesCount: customCtx.categoriesCount,
         activeShiftId: customCtx.activeShiftId,
@@ -46,7 +44,6 @@ export function useOperationalGuard() {
         warehousesCount?: number;
         suppliersCount?: number;
         productsCount?: number;
-        rawMaterialsCount?: number;
         formData?: Record<string, unknown>;
       }
     ): boolean => {

@@ -23,21 +23,6 @@ interface CategoryExportRow {
   is_active?: boolean;
 }
 
-interface RawMaterialExportRow {
-  sku?: string;
-  name?: string;
-  unit?: string;
-  cost_price?: number;
-  min_stock?: number;
-  is_active?: boolean;
-}
-
-interface RecipeItemExportRow {
-  quantity?: number;
-  recipe?: { product?: { sku?: string; name?: string }; name?: string };
-  raw_material?: { sku?: string; name?: string; unit?: string };
-}
-
 interface SupplierExportRow {
   code?: string;
   name?: string;
@@ -65,7 +50,6 @@ interface PurchaseItemExportRow {
   total_cost?: number;
   purchase?: { purchase_number?: string; invoice_date?: string; supplier?: { name?: string }; warehouse?: { name?: string } };
   product?: { sku?: string; name?: string };
-  raw_material?: { sku?: string; name?: string };
 }
 
 export class ExportService {
@@ -119,43 +103,6 @@ export class ExportService {
         break;
       }
 
-      case 'components': {
-        let query = supabase.from('raw_materials').select('*');
-        if (filters.branchId) query = query.eq('branch_id', filters.branchId);
-        if (filters.status === 'active') query = query.eq('is_active', true);
-        if (filters.status === 'inactive') query = query.eq('is_active', false);
-
-        const { data, error } = await query;
-        if (error) throw error;
-
-        rows = ((data as unknown as RawMaterialExportRow[]) || []).map((m) => ({
-          [isAr ? 'كود المكون (SKU)' : 'Component SKU']: m.sku || '',
-          [isAr ? 'اسم المكون' : 'Component Name']: m.name || '',
-          [isAr ? 'وحدة القياس' : 'Unit']: m.unit || '',
-          [isAr ? 'سعر التكلفة' : 'Cost']: Number(m.cost_price || 0),
-          [isAr ? 'حد الطلب الأدنى' : 'Min Stock']: Number(m.min_stock || 0),
-          [isAr ? 'نشط' : 'Active']: m.is_active ? (isAr ? 'نعم' : 'Yes') : (isAr ? 'لا' : 'No'),
-        }));
-        break;
-      }
-
-      case 'recipes': {
-        const { data, error } = await supabase
-          .from('recipe_items')
-          .select('*, recipe:recipes(*, product:products(*)), raw_material:raw_materials(*)');
-        if (error) throw error;
-
-        rows = ((data as unknown as RecipeItemExportRow[]) || []).map((it) => ({
-          [isAr ? 'كود المنتج التام (Product SKU)' : 'Product SKU']: it.recipe?.product?.sku || '',
-          [isAr ? 'اسم المنتج' : 'Product Name']: it.recipe?.product?.name || it.recipe?.name || '',
-          [isAr ? 'كود المكون' : 'Component SKU']: it.raw_material?.sku || '',
-          [isAr ? 'اسم المكون' : 'Component Name']: it.raw_material?.name || '',
-          [isAr ? 'الكمية المطلوبة' : 'Quantity']: Number(it.quantity || 0),
-          [isAr ? 'وحدة الاستهلاك' : 'Unit']: it.raw_material?.unit || '',
-        }));
-        break;
-      }
-
       case 'suppliers': {
         const { data, error } = await supabase.from('suppliers').select('*').order('name');
         if (error) throw error;
@@ -190,7 +137,7 @@ export class ExportService {
       case 'purchases': {
         let query = supabase
           .from('purchase_items')
-          .select('*, purchase:purchases(*, supplier:suppliers(name), warehouse:warehouses(name)), product:products(sku, name), raw_material:raw_materials(sku, name)');
+          .select('*, purchase:purchases(*, supplier:suppliers(name), warehouse:warehouses(name)), product:products(sku, name)');
 
         if (filters.startDate) query = query.gte('purchase.invoice_date', filters.startDate);
         if (filters.endDate) query = query.lte('purchase.invoice_date', filters.endDate);
@@ -203,8 +150,8 @@ export class ExportService {
           [isAr ? 'التاريخ' : 'Date']: pi.purchase?.invoice_date || '',
           [isAr ? 'المورد' : 'Supplier']: pi.purchase?.supplier?.name || '',
           [isAr ? 'المستودع' : 'Warehouse']: pi.purchase?.warehouse?.name || '',
-          [isAr ? 'كود الصنف' : 'Item SKU']: pi.product?.sku || pi.raw_material?.sku || '',
-          [isAr ? 'اسم الصنف' : 'Item Name']: pi.product?.name || pi.raw_material?.name || '',
+          [isAr ? 'كود الصنف' : 'Item SKU']: pi.product?.sku || '',
+          [isAr ? 'اسم الصنف' : 'Item Name']: pi.product?.name || '',
           [isAr ? 'الكمية' : 'Quantity']: Number(pi.quantity || 0),
           [isAr ? 'سعر الوحدة' : 'Unit Cost']: Number(pi.unit_cost || 0),
           [isAr ? 'إجمالي السطر' : 'Line Total']: Number(pi.total_cost || 0),
@@ -213,7 +160,6 @@ export class ExportService {
       }
 
       case 'opening_inventory':
-      case 'production':
       case 'transfers':
       case 'expenses':
       case 'users':

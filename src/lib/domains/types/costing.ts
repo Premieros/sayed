@@ -21,15 +21,6 @@ export interface CostingComponentLine {
   line_cost: number;
 }
 
-export interface CostingRecipeLine {
-  raw_material_id: string;
-  raw_material_name: string;
-  quantity: number;
-  wastage_percent: number;
-  unit_cost: number;
-  line_cost: number;
-}
-
 export interface CostHistoryRow {
   id: string;
   product_id: string;
@@ -54,7 +45,6 @@ export interface ProductCostingDetail {
   component_count?: number;
   recipe_item_count?: number;
   components?: CostingComponentLine[];
-  recipe_items?: CostingRecipeLine[];
   history?: CostHistoryRow[];
 }
 

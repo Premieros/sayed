@@ -4,7 +4,7 @@ const SUPABASE_ORIGIN = 'https://nahptrsihcidcxkjzwdp.supabase.co';
 
 const protectedRoutes = [
   '/dashboard', '/pos', '/floor-plan', '/kitchen', '/tables', '/products', '/inventory',
-  '/warehouses', '/raw-materials', '/recipes', '/transfers', '/inventory-ledger',
+  '/warehouses', '/transfers', '/inventory-ledger',
   '/branches', '/purchases', '/customers', '/suppliers', '/expenses', '/sales', '/shifts',
   '/reports', '/financial-reports', '/accounting', '/accounts', '/payments', '/journal',
   '/treasury', '/reconciliation', '/users', '/employees', '/audit-log', '/settings',

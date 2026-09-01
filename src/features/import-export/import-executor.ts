@@ -299,270 +299,6 @@ export class ImportExecutor {
           break;
         }
 
-        case 'components': {
-          for (let i = 0; i < mappedRows.length; i++) {
-            const row = mappedRows[i];
-            const rowNumber = i + 2;
-
-            if (invalidRowIndices.has(i)) {
-              skippedCount++;
-              errorCount++;
-              continue;
-            }
-
-            const sku = String(row.sku || row.code || '').trim();
-            const name = String(row.name || '').trim();
-            const unit = String(row.unit || 'كجم').trim();
-            const cost = Number(row.cost || row.default_cost || 0);
-            const min_stock = Number(row.min_stock || 0);
-            const is_active = row.is_active !== undefined ? Boolean(row.is_active) : true;
-            const category = row.category ? String(row.category).trim() : null;
-
-            if (!name || !sku) {
-              skippedCount++;
-              errorCount++;
-              continue;
-            }
-
-            updateProgress(i + 1, `معالجة المادة الخام (${i + 1} / ${totalRows}): ${name}`);
-
-            try {
-              const existingComp = context.existingComponents.find(
-                (c) => c.sku?.toLowerCase() === sku.toLowerCase() || c.name?.toLowerCase() === name.toLowerCase()
-              );
-
-              if (existingComp) {
-                if (policy === 'skip_existing' || policy === 'add_only') {
-                  skippedCount++;
-                  continue;
-                }
-                const { error: updErr } = await supabase
-                  .from('raw_materials')
-                  .update({ name, category, default_cost: cost, min_stock, is_active, description: `الوحدة: ${unit}` })
-                  .eq('id', existingComp.id);
-                if (updErr) throw updErr;
-                updatedCount++;
-              } else {
-                const { data: insMat, error: insErr } = await supabase
-                  .from('raw_materials')
-                  .insert({
-                    code: sku,
-                    name,
-                    category,
-                    default_cost: cost,
-                    min_stock,
-                    is_active,
-                    description: `الوحدة: ${unit}`,
-                  })
-                  .select()
-                  .single();
-                if (insErr) throw insErr;
-                if (insMat) {
-                  context.existingComponents.push({
-                    id: (insMat as { id: string }).id,
-                    sku,
-                    name,
-                    unit,
-                    cost,
-                  });
-                }
-                insertedCount++;
-              }
-            } catch (err: unknown) {
-              errorCount++;
-              const msg = err instanceof Error ? err.message : String(err);
-              errors.push({
-                rowNumber,
-                column: 'المادة الخام',
-                value: sku,
-                message: `فشل استيراد المادة الخام: ${msg}`,
-                messageEn: `Failed component import: ${msg}`,
-                remedy: 'تأكد من عدم تكرار كود المادة وتوفر وحدة القياس.',
-                remedyEn: 'Check SKU uniqueness and unit.',
-                severity: 'error',
-              });
-              if (policy === 'stop_on_error') break;
-            }
-          }
-          break;
-        }
-
-        case 'recipes': {
-          // Group rows by product_sku (One Row Per Component)
-          const recipeGroups = new Map<string, Array<{ component_sku: string; quantity: number; unit?: string }>>();
-          const rowNumberMap = new Map<string, number>();
-
-          mappedRows.forEach((r, idx) => {
-            if (invalidRowIndices.has(idx)) return;
-            const prodSku = String(r.product_sku || '').trim();
-            const compSku = String(r.component_sku || '').trim();
-            const qty = Number(r.quantity || 0);
-            if (!prodSku || !compSku || qty <= 0) return;
-
-            if (!recipeGroups.has(prodSku)) {
-              recipeGroups.set(prodSku, []);
-              rowNumberMap.set(prodSku, idx + 2);
-            }
-            recipeGroups.get(prodSku)!.push({
-              component_sku: compSku,
-              quantity: qty,
-              unit: r.unit ? String(r.unit).trim() : undefined,
-            });
-          });
-
-          let groupIndex = 0;
-          const groupCount = recipeGroups.size;
-
-          for (const [prodSku, compItems] of recipeGroups.entries()) {
-            groupIndex++;
-            updateProgress(
-              groupIndex,
-              `معالجة وصفة المنتج (${groupIndex} / ${groupCount}): ${prodSku} (${compItems.length} مكونات)`
-            );
-
-            try {
-              // 1. Resolve or auto-create product
-              let product = context.existingProducts.find(
-                (p) => p.sku?.toLowerCase() === prodSku.toLowerCase() || p.id === prodSku
-              );
-              if (!product) {
-                // Auto-create product
-                const { data: newProd } = await supabase
-                  .from('products')
-                  .insert({
-                    sku: prodSku,
-                    name: `منتج ${prodSku}`,
-                    product_type: 'manufactured',
-                    sale_price: 30,
-                    cost_price: 15,
-                    is_active: true,
-                    branch_id: context.userBranchId || null,
-                  })
-                  .select()
-                  .maybeSingle();
-
-                if (newProd) {
-                  product = {
-                    id: (newProd as { id: string }).id,
-                    sku: prodSku,
-                    name: (newProd as { name: string }).name,
-                  };
-                  context.existingProducts.push(product);
-                }
-              }
-
-              if (product) {
-                // Update product type to manufactured
-                await supabase.from('products').update({ product_type: 'manufactured' }).eq('id', product.id);
-              }
-
-              // 2. Resolve or auto-create components
-              const recipeItemPayloads: Array<{ raw_material_id: string; quantity: number; wastage_percent: number }> = [];
-
-              for (const comp of compItems) {
-                let rawMat = context.existingComponents.find(
-                  (c) => c.sku?.toLowerCase() === comp.component_sku.toLowerCase() || c.id === comp.component_sku
-                );
-                if (!rawMat) {
-                  // Auto create raw material
-                  try {
-                    const { data: newMat } = await supabase
-                      .from('raw_materials')
-                      .insert({
-                        code: comp.component_sku,
-                        name: comp.component_sku,
-                        default_cost: 5,
-                        min_stock: 5,
-                        is_active: true,
-                      })
-                      .select()
-                      .maybeSingle();
-                    if (newMat) {
-                      rawMat = {
-                        id: (newMat as { id: string }).id,
-                        sku: comp.component_sku,
-                        name: comp.component_sku,
-                        unit: 'كجم',
-                        cost: 5,
-                      };
-                      context.existingComponents.push(rawMat);
-                    }
-                  } catch {
-                    // Ignore
-                  }
-                }
-
-                if (rawMat) {
-                  recipeItemPayloads.push({
-                    raw_material_id: rawMat.id,
-                    quantity: comp.quantity,
-                    wastage_percent: 0,
-                  });
-                }
-              }
-
-              if (product) {
-                // 3. Check existing recipe
-                const { data: existingRecipes } = await supabase
-                  .from('recipes')
-                  .select('id')
-                  .eq('product_id', product.id);
-
-                let recipeId: string;
-
-                if (existingRecipes && existingRecipes.length > 0) {
-                  recipeId = existingRecipes[0].id;
-                  // Delete previous items
-                  await supabase.from('recipe_items').delete().eq('recipe_id', recipeId);
-                  updatedCount += compItems.length;
-                } else {
-                  const { data: newRecipe, error: recErr } = await supabase
-                    .from('recipes')
-                    .insert({
-                      product_id: product.id,
-                      branch_id: context.userBranchId || context.allowedBranchIds[0] || null,
-                      name: `وصفة: ${product.name}`,
-                      yield_quantity: 1,
-                      is_active: true,
-                    })
-                    .select()
-                    .single();
-
-                  if (recErr) throw recErr;
-                  recipeId = (newRecipe as { id: string }).id;
-                  insertedCount += compItems.length;
-                }
-
-                // 4. Insert recipe items
-                if (recipeItemPayloads.length > 0) {
-                  const { error: insItemsErr } = await supabase.from('recipe_items').insert(
-                    recipeItemPayloads.map((it) => ({
-                      ...it,
-                      recipe_id: recipeId,
-                    }))
-                  );
-                  if (insItemsErr) throw insItemsErr;
-                }
-              }
-            } catch (err: unknown) {
-              errorCount += compItems.length;
-              const msg = err instanceof Error ? err.message : String(err);
-              errors.push({
-                rowNumber: rowNumberMap.get(prodSku) || 2,
-                column: 'الوصفة والمكونات',
-                value: prodSku,
-                message: `فشل استيراد مكونات الوصفة: ${msg}`,
-                messageEn: `Failed recipe import: ${msg}`,
-                remedy: 'تحقق من تسجيل المنتج وكافة المواد الخام.',
-                remedyEn: 'Verify all ingredients and product exist.',
-                severity: 'error',
-              });
-              if (policy === 'stop_on_error') break;
-            }
-          }
-          break;
-        }
-
         case 'prices': {
           for (let i = 0; i < mappedRows.length; i++) {
             const row = mappedRows[i];
@@ -675,9 +411,8 @@ export class ImportExecutor {
               let totalTax = 0;
 
               const lineItems: Array<{
-                item_type: 'product' | 'raw_material';
+                item_type: 'product';
                 product_id?: string;
-                raw_material_id?: string;
                 quantity: number;
                 unit_cost: number;
                 tax_rate: number;
@@ -695,19 +430,9 @@ export class ImportExecutor {
                 subtotal += lineSub;
                 totalTax += lineTax;
 
-                const raw = context.existingComponents.find((c) => c.sku?.toLowerCase() === sku.toLowerCase());
                 const prod = context.existingProducts.find((p) => p.sku?.toLowerCase() === sku.toLowerCase());
 
-                if (raw) {
-                  lineItems.push({
-                    item_type: 'raw_material',
-                    raw_material_id: raw.id,
-                    quantity: qty,
-                    unit_cost: cost,
-                    tax_rate: taxRate,
-                    total_cost: lineSub + lineTax,
-                  });
-                } else if (prod) {
+                if (prod) {
                   lineItems.push({
                     item_type: 'product',
                     product_id: prod.id,
@@ -747,17 +472,7 @@ export class ImportExecutor {
                 });
 
                 // Update inventory movements
-                if (line.raw_material_id) {
-                  await supabase.from('inventory_movements').insert({
-                    raw_material_id: line.raw_material_id,
-                    warehouse_id: warehouse.id,
-                    movement_type: 'purchase',
-                    quantity: line.quantity,
-                    unit_cost: line.unit_cost,
-                    reference_id: poId,
-                    notes: `استيراد فاتورة شراء ${purchaseNo}`,
-                  });
-                } else if (line.product_id) {
+                if (line.product_id) {
                   await supabase.from('inventory_movements').insert({
                     product_id: line.product_id,
                     warehouse_id: warehouse.id,
@@ -826,15 +541,13 @@ export class ImportExecutor {
               );
               if (!warehouse) throw new Error(`المستودع "${whStr}" غير مسجل.`);
 
-              const raw = context.existingComponents.find((c) => c.sku?.toLowerCase() === sku.toLowerCase());
-              const prod = context.existingProducts.find((p) => p.sku?.toLowerCase() === sku.toLowerCase());
+const prod = context.existingProducts.find((p) => p.sku?.toLowerCase() === sku.toLowerCase());
 
-              if (!raw && !prod) throw new Error(`الصنف "${sku}" غير مسجل.`);
+              if (!prod) throw new Error(`الصنف "${sku}" غير مسجل.`);
 
               // Record opening inventory movement
               await supabase.from('inventory_movements').insert({
                 product_id: prod?.id || null,
-                raw_material_id: raw?.id || null,
                 warehouse_id: warehouse.id,
                 movement_type: 'opening_balance',
                 quantity: qty,
@@ -856,88 +569,6 @@ export class ImportExecutor {
                 messageEn: `Failed opening inventory import: ${msg}`,
                 remedy: 'تأكد من وجود الصنف والمستودع.',
                 remedyEn: 'Check item and warehouse existence.',
-                severity: 'error',
-              });
-              if (policy === 'stop_on_error') break;
-            }
-          }
-          break;
-        }
-
-        case 'production': {
-          for (let i = 0; i < mappedRows.length; i++) {
-            const row = mappedRows[i];
-            const rowNumber = i + 2;
-
-            if (invalidRowIndices.has(i)) {
-              skippedCount++;
-              errorCount++;
-              continue;
-            }
-
-            const prodNo = String(row.production_no || '').trim();
-            const dateStr = String(row.date || new Date().toISOString().slice(0, 10)).trim();
-            const whStr = String(row.warehouse || '').trim();
-            const sku = String(row.product_sku || '').trim();
-            const qty = Number(row.quantity || 0);
-
-            if (!prodNo || !sku || qty <= 0) {
-              skippedCount++;
-              errorCount++;
-              continue;
-            }
-
-            updateProgress(i + 1, `معالجة أمر الإنتاج (${i + 1} / ${totalRows}): ${prodNo}`);
-
-            try {
-              const product = context.existingProducts.find(
-                (p) => p.sku?.toLowerCase() === sku.toLowerCase() || p.id === sku
-              );
-              if (!product) throw new Error(`المنتج التام "${sku}" غير مسجل.`);
-
-              const warehouse = context.existingWarehouses.find(
-                (w) =>
-                  w.code?.toLowerCase() === whStr.toLowerCase() ||
-                  w.name?.toLowerCase() === whStr.toLowerCase() ||
-                  w.id === whStr
-              );
-              if (!warehouse) throw new Error(`المستودع "${whStr}" غير مسجل.`);
-
-              // Create production order
-              await supabase.from('production_orders').insert({
-                order_number: prodNo,
-                product_id: product.id,
-                planned_quantity: qty,
-                actual_quantity: qty,
-                warehouse_id: warehouse.id,
-                branch_id: warehouse.branch_id || context.userBranchId || null,
-                status: 'completed',
-                order_date: dateStr,
-                notes: 'استيراد أمر إنتاج عبر الإكسل',
-              });
-
-              // Add finished product stock
-              await supabase.from('inventory_movements').insert({
-                product_id: product.id,
-                warehouse_id: warehouse.id,
-                movement_type: 'production_in',
-                quantity: qty,
-                unit_cost: product.cost_price || 0,
-                notes: `أمر إنتاج ${prodNo}`,
-              });
-
-              insertedCount++;
-            } catch (err: unknown) {
-              errorCount++;
-              const msg = err instanceof Error ? err.message : String(err);
-              errors.push({
-                rowNumber,
-                column: 'أمر الإنتاج',
-                value: prodNo,
-                message: `فشل استيراد أمر الإنتاج: ${msg}`,
-                messageEn: `Failed production order import: ${msg}`,
-                remedy: 'تحقق من صحة المنتج التام والمستودع والكمية.',
-                remedyEn: 'Verify finished product, warehouse, and quantity.',
                 severity: 'error',
               });
               if (policy === 'stop_on_error') break;
@@ -990,15 +621,13 @@ export class ImportExecutor {
               if (!fromWh) throw new Error(`المستودع المصدر "${fromWhStr}" غير مسجل.`);
               if (!toWh) throw new Error(`المستودع الوجهة "${toWhStr}" غير مسجل.`);
 
-              const raw = context.existingComponents.find((c) => c.sku?.toLowerCase() === sku.toLowerCase());
-              const prod = context.existingProducts.find((p) => p.sku?.toLowerCase() === sku.toLowerCase());
+const prod = context.existingProducts.find((p) => p.sku?.toLowerCase() === sku.toLowerCase());
 
-              if (!raw && !prod) throw new Error(`الصنف "${sku}" غير مسجل.`);
+              if (!prod) throw new Error(`الصنف "${sku}" غير مسجل.`);
 
               // Deduct from source warehouse
               await supabase.from('inventory_movements').insert({
                 product_id: prod?.id || null,
-                raw_material_id: raw?.id || null,
                 warehouse_id: fromWh.id,
                 movement_type: 'transfer_out',
                 quantity: -qty,
@@ -1008,7 +637,6 @@ export class ImportExecutor {
               // Add to destination warehouse
               await supabase.from('inventory_movements').insert({
                 product_id: prod?.id || null,
-                raw_material_id: raw?.id || null,
                 warehouse_id: toWh.id,
                 movement_type: 'transfer_in',
                 quantity: qty,

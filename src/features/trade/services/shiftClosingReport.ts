@@ -48,14 +48,6 @@ export interface ShiftClosingSummary {
     total: number;
   }[];
 
-  // Raw materials / ingredients consumed
-  ingredientsConsumed: {
-    materialId: string;
-    materialName: string;
-    quantity: number;
-    unit: string;
-    estimatedCost: number;
-  }[];
 }
 
 export async function fetchShiftClosingDetails(shiftId: string, branchId?: string): Promise<ShiftClosingSummary> {
@@ -149,51 +141,6 @@ export async function fetchShiftClosingDetails(shiftId: string, branchId?: strin
     }
   }
 
-  // 4. Fetch Recipes and calculate Raw Material / Ingredients Consumption
-  const ingredientsMap = new Map<string, { name: string; quantity: number; unit: string; estimatedCost: number }>();
-
-  if (productMap.size > 0 && effectiveBranchId) {
-    const productIds = Array.from(productMap.keys()).filter((id) => id !== 'unknown');
-    if (productIds.length > 0) {
-      const { data: recipes } = await supabase
-        .from('recipes')
-        .select('product_id, yield_quantity, recipe_items(raw_material_id, quantity, wastage_percent, raw_material:raw_materials(name, unit_id, default_cost, unit:units(name, name_en, symbol)))')
-        .in('product_id', productIds)
-        .eq('branch_id', effectiveBranchId);
-
-      if (recipes && Array.isArray(recipes)) {
-        for (const recipe of recipes) {
-          const soldProd = productMap.get(recipe.product_id);
-          if (!soldProd) continue;
-
-          const yieldQty = Number(recipe.yield_quantity) || 1;
-          const soldCount = soldProd.quantity;
-          const multiplier = soldCount / yieldQty;
-
-          if (recipe.recipe_items && Array.isArray(recipe.recipe_items)) {
-            for (const rItem of recipe.recipe_items) {
-              const raw = rItem.raw_material as { name?: string; default_cost?: number; unit?: { name?: string; symbol?: string } } | null;
-              const matId = rItem.raw_material_id;
-              const matName = raw?.name || 'مادة خام';
-              const unitStr = raw?.unit?.symbol || raw?.unit?.name || 'جرام/كجم';
-              const unitCost = Number(raw?.default_cost) || 0;
-
-              const baseQty = Number(rItem.quantity) * multiplier;
-              const wastagePct = Number(rItem.wastage_percent) || 0;
-              const totalConsumed = baseQty * (1 + wastagePct / 100);
-              const cost = totalConsumed * unitCost;
-
-              const currMat = ingredientsMap.get(matId) || { name: matName, quantity: 0, unit: unitStr, estimatedCost: 0 };
-              currMat.quantity += totalConsumed;
-              currMat.estimatedCost += cost;
-              ingredientsMap.set(matId, currMat);
-            }
-          }
-        }
-      }
-    }
-  }
-
   // Payment method labels map
   const methodLabelMap: Record<string, string> = {
     cash: 'نقدي (Cash)',
@@ -253,14 +200,6 @@ export async function fetchShiftClosingDetails(shiftId: string, branchId?: strin
       quantity: data.quantity,
       unitName: data.unitName,
       total: data.total,
-    })),
-
-    ingredientsConsumed: Array.from(ingredientsMap.entries()).map(([materialId, data]) => ({
-      materialId,
-      materialName: data.name,
-      quantity: parseFloat(data.quantity.toFixed(3)),
-      unit: data.unit,
-      estimatedCost: parseFloat(data.estimatedCost.toFixed(2)),
     })),
   };
 }
@@ -414,29 +353,6 @@ export function buildThermalZReportHtml(summary: ShiftClosingSummary, currency =
             <td>${escapeHtml(p.productName)}</td>
             <td class="text-center font-bold">${p.quantity}</td>
             <td class="text-end font-bold">${formatCurrency(p.total, currency, lang)}</td>
-          </tr>
-        `).join('')}
-      </tbody>
-    </table>
-  ` : ''}
-
-  <!-- Ingredients Consumed -->
-  ${summary.ingredientsConsumed.length > 0 ? `
-    <div class="section-title">${isAr ? 'المكونات والمواد الخام المستهلكة' : 'INGREDIENTS CONSUMED'}</div>
-    <table>
-      <thead>
-        <tr>
-          <th style="text-align: ${isAr ? 'right' : 'left'};">${isAr ? 'المادة' : 'Material'}</th>
-          <th class="text-center">${isAr ? 'الكمية' : 'Qty'}</th>
-          <th class="text-end">${isAr ? 'التكلفة المقدرة' : 'Est. Cost'}</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${summary.ingredientsConsumed.map((m) => `
-          <tr>
-            <td>${escapeHtml(m.materialName)}</td>
-            <td class="text-center font-bold">${m.quantity} ${escapeHtml(m.unit)}</td>
-            <td class="text-end">${formatCurrency(m.estimatedCost, currency, lang)}</td>
           </tr>
         `).join('')}
       </tbody>
@@ -641,29 +557,6 @@ export function buildA4ZReportHtml(summary: ShiftClosingSummary, currency = 'EGP
         `).join('')}
       </tbody>
     </table>
-
-    <!-- Ingredients Consumed -->
-    ${summary.ingredientsConsumed.length > 0 ? `
-      <h3 class="section-heading">${isAr ? 'المكونات والمواد الخام المستهلكة (الخصم التلقائي للوصفات)' : 'Raw Materials & Ingredients Consumed (Recipe Deductions)'}</h3>
-      <table>
-        <thead>
-          <tr>
-            <th>${isAr ? 'المادة الخام / المكون' : 'Raw Material'}</th>
-            <th class="text-center">${isAr ? 'الكمية المستهلكة' : 'Consumed Qty'}</th>
-            <th class="text-end">${isAr ? 'التكلفة التقديرية' : 'Estimated Cost'}</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${summary.ingredientsConsumed.map((m) => `
-            <tr>
-              <td>${escapeHtml(m.materialName)}</td>
-              <td class="text-center font-bold">${m.quantity} ${escapeHtml(m.unit)}</td>
-              <td class="text-end font-bold">${formatCurrency(m.estimatedCost, currency, lang)}</td>
-            </tr>
-          `).join('')}
-        </tbody>
-      </table>
-    ` : ''}
 
     ${summary.notes ? `
       <div style="margin-top: 16px; padding: 12px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;">

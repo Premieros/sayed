@@ -1,5 +1,4 @@
 import type { Product, Warehouse } from './catalog';
-import type { RawMaterial } from './manufacturing';
 import type { Branch } from './organization';
 
 export type TransferStatus = 'pending' | 'approved' | 'rejected';
@@ -73,7 +72,6 @@ export type LedgerEntryType =
 export interface InventoryLedgerEntry {
   id: number;
   product_id: string | null;
-  raw_material_id: string | null;
   branch_id: string;
   warehouse_id: string | null;
   batch_number: string | null;
@@ -89,7 +87,6 @@ export interface InventoryLedgerEntry {
   created_by: string | null;
   created_at: string;
   product?: Product;
-  raw_material?: RawMaterial;
   warehouse?: Warehouse;
   branch?: Branch;
 }

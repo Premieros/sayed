@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   AlertTriangle, ArrowLeftRight, BadgeDollarSign, BarChart3, BookOpenText, Building2,
   Calculator, ChefHat, ClipboardCheck, ClipboardList, FileSpreadsheet,
-  FileText, FlaskConical, HandCoins, Landmark, Layers, LayoutDashboard, Package,
+  FileText, HandCoins, Landmark, Layers, LayoutDashboard, Package,
   Receipt, Scale, ScrollText, Settings, ShoppingCart, SlidersHorizontal,
   Store, Tags, Timer, Truck, UserCog, Users, Wallet, Warehouse,
 } from 'lucide-react';
@@ -15,7 +15,7 @@ import { MENU_ITEMS } from '@/core/navigation/menu.config';
 
 const ICON_MAP: Record<string, typeof Package> = {
   dashboard: LayoutDashboard, pos: ShoppingCart, products: Package,
-  categories: Tags, components: Layers, rawMaterials: FlaskConical, recipes: ChefHat,
+  categories: Tags, components: Layers,
   inventory: Warehouse, warehouses: Warehouse, transfers: ArrowLeftRight,
   inventoryLedger: BookOpenText, stockCounts: ClipboardCheck, inventoryBatches: Layers,
   stockValuation: BadgeDollarSign, lowStockAlerts: AlertTriangle, inventoryUnits: Package,
@@ -108,8 +108,6 @@ function buildCommandItems(): CommandItem[] {
   }
 
   const extras: Omit<CommandItem, 'icon'>[] = [
-    { id: 'cmd-raw-materials', route: APP_ROUTES.rawMaterials, labelAr: 'المواد الخام', labelEn: 'Raw Materials', section: 'Manufacturing', sectionAr: 'التصنيع', descriptionAr: 'تعريف المواد الخام ومتابعة الأرصدة', descriptionEn: 'Manage raw materials and stock', permission: 'raw_materials.view' },
-    { id: 'cmd-recipes', route: APP_ROUTES.recipes, labelAr: 'الوصفات والمكونات', labelEn: 'Recipes & Components', section: 'Manufacturing', sectionAr: 'التصنيع', descriptionAr: 'إدارة الوصفات ومكونات المنتجات', descriptionEn: 'Manage recipes and product components', permission: 'recipes.view' },
     { id: 'cmd-transfers', route: APP_ROUTES.transfers, labelAr: 'التحويلات المخزنية', labelEn: 'Warehouse Transfers', section: 'Inventory', sectionAr: 'المخزون', descriptionAr: 'نقل الأصناف بين المستودعات والفروع', descriptionEn: 'Move stock between warehouses', permission: 'inventory.transfers' },
     { id: 'cmd-ledger', route: APP_ROUTES.inventoryLedger, labelAr: 'دفتر حركة المخزون', labelEn: 'Inventory Ledger', section: 'Inventory', sectionAr: 'المخزون', descriptionAr: 'تتبع كل حركة دخول وخروج وتحويل', descriptionEn: 'Trace stock movements', permission: 'inventory.ledger.view' },
     { id: 'cmd-stock-counts', route: APP_ROUTES.stockCounts, labelAr: 'الجرد والتسويات', labelEn: 'Stock Counts & Adjustments', section: 'Inventory', sectionAr: 'المخزون', descriptionAr: 'الجرد الفعلي وتسويات المخزون', descriptionEn: 'Physical counts and stock adjustments', permission: 'inventory.manage' },
@@ -124,7 +122,7 @@ function buildCommandItems(): CommandItem[] {
   ];
 
   for (const e of extras) {
-    items.push({ ...e, icon: ICON_MAP[e.route === APP_ROUTES.rawMaterials ? 'rawMaterials' : e.route === APP_ROUTES.recipes ? 'recipes' : e.route === APP_ROUTES.transfers ? 'transfers' : e.route === APP_ROUTES.inventoryLedger ? 'inventoryLedger' : e.route === APP_ROUTES.stockCounts ? 'stockCounts' : e.route === APP_ROUTES.inventoryBatches ? 'inventoryBatches' : e.route === APP_ROUTES.stockValuation ? 'stockValuation' : e.route === APP_ROUTES.lowStockAlerts ? 'lowStockAlerts' : e.route === APP_ROUTES.purchaseRequests ? 'purchases' : e.route === APP_ROUTES.rfqs ? 'purchases' : e.route === APP_ROUTES.receiving ? 'purchases' : e.route === APP_ROUTES.floorPlan ? 'pos' : e.route === APP_ROUTES.systemHealth ? 'settings' : 'products'] ?? Package });
+    items.push({ ...e, icon: ICON_MAP[e.route === APP_ROUTES.transfers ? 'transfers' : e.route === APP_ROUTES.inventoryLedger ? 'inventoryLedger' : e.route === APP_ROUTES.stockCounts ? 'stockCounts' : e.route === APP_ROUTES.inventoryBatches ? 'inventoryBatches' : e.route === APP_ROUTES.stockValuation ? 'stockValuation' : e.route === APP_ROUTES.lowStockAlerts ? 'lowStockAlerts' : e.route === APP_ROUTES.purchaseRequests ? 'purchases' : e.route === APP_ROUTES.rfqs ? 'purchases' : e.route === APP_ROUTES.receiving ? 'purchases' : e.route === APP_ROUTES.floorPlan ? 'pos' : e.route === APP_ROUTES.systemHealth ? 'settings' : 'products'] ?? Package });
   }
 
   return items;

@@ -2,9 +2,7 @@ import type { LowStockAlertRow, ProcurementLineInput } from '@/lib/types';
 
 export interface ReorderLine {
   key: string;
-  item_type: 'product' | 'raw';
-  product_id?: string;
-  raw_material_id?: string;
+  product_id: string;
   name: string;
   unit_name: string;
   on_hand: number;
@@ -13,15 +11,6 @@ export interface ReorderLine {
   reorder_point: number;
   suggested_qty: number;
   estimated_cost: number;
-}
-
-export interface RawReorderSource {
-  raw_material_id: string;
-  name: string;
-  unit_name: string | null;
-  quantity: number;
-  min_stock: number;
-  default_cost: number;
 }
 
 export function suggestProductReorderQty(a: {
@@ -35,14 +24,6 @@ export function suggestProductReorderQty(a: {
   const shortage = Number(a.shortage_qty) || 0;
   let qty = maxStock > 0 ? Math.max(maxStock - onHand, 0) : shortage;
   if (qty <= 0 && a.status === 'out') qty = 1;
-  return qty;
-}
-
-export function suggestRawReorderQty(row: { quantity: number; min_stock: number }): number {
-  const onHand = Number(row.quantity) || 0;
-  const minStock = Number(row.min_stock) || 0;
-  let qty = minStock > 0 ? Math.max(minStock - onHand, 0) : 0;
-  if (qty <= 0 && onHand <= 0) qty = 1;
   return qty;
 }
 
@@ -68,7 +49,6 @@ export function buildProductReorderLines(alerts: LowStockAlertRow[]): ReorderLin
     if (qty <= 0) continue;
     lines.push({
       key: `product:${productId}`,
-      item_type: 'product',
       product_id: productId,
       name: first.product_name,
       unit_name: 'piece',
@@ -83,37 +63,13 @@ export function buildProductReorderLines(alerts: LowStockAlertRow[]): ReorderLin
   return lines.sort((a, b) => a.name.localeCompare(b.name));
 }
 
-export function buildRawReorderLines(rows: RawReorderSource[]): ReorderLine[] {
-  const lines: ReorderLine[] = [];
-  for (const r of rows) {
-    const qty = suggestRawReorderQty(r);
-    if (qty <= 0) continue;
-    lines.push({
-      key: `raw:${r.raw_material_id}`,
-      item_type: 'raw',
-      raw_material_id: r.raw_material_id,
-      name: r.name,
-      unit_name: r.unit_name || 'piece',
-      on_hand: Number(r.quantity) || 0,
-      min_stock: Number(r.min_stock) || 0,
-      max_stock: 0,
-      reorder_point: 0,
-      suggested_qty: qty,
-      estimated_cost: Number(r.default_cost) || 0,
-    });
-  }
-  return lines.sort((a, b) => a.name.localeCompare(b.name));
-}
-
 export function reorderLinesToProcurementItems(
   lines: ReorderLine[],
   qtyOverride: Record<string, number>
 ): ProcurementLineInput[] {
   return lines
     .map((l) => ({
-      ...(l.item_type === 'product'
-        ? { product_id: l.product_id }
-        : { raw_material_id: l.raw_material_id }),
+      product_id: l.product_id,
       quantity: qtyOverride[l.key] ?? l.suggested_qty,
       unit_name: l.unit_name,
       estimated_cost: l.estimated_cost > 0 ? l.estimated_cost : undefined,

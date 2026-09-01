@@ -94,12 +94,12 @@ export const PREREQUISITE_STEPS: Record<PrerequisiteStepKey, PrerequisiteStep> =
     key: 'create_unit',
     titleAr: 'تعريف وحدات القياس',
     titleEn: 'Define Units of Measure',
-    descriptionAr: 'يلزم أولاً تعريف وحدات القياس (كيلو، جرام، لتر، قطعة) قبل ربط الخامات والمنتجات والوصفات.',
-    descriptionEn: 'Units of measure (kg, g, l, piece) must be defined before configuring items and recipes.',
+    descriptionAr: 'يلزم أولاً تعريف وحدات القياس (كيلو، جرام، لتر، قطعة) قبل ربط المنتجات ومكوناتها.',
+    descriptionEn: 'Units of measure (kg, g, l, piece) must be defined before configuring items and components.',
     targetRoute: APP_ROUTES.inventoryUnits,
     actionLabelAr: 'الانتقال إلى الوحدات',
     actionLabelEn: 'Go to Units',
-    requiredPermission: 'raw_materials.view',
+    requiredPermission: 'inventory.manage',
     iconName: 'scale',
   },
   create_category: {
@@ -125,30 +125,6 @@ export const PREREQUISITE_STEPS: Record<PrerequisiteStepKey, PrerequisiteStep> =
     actionLabelEn: 'Product Setup Wizard',
     requiredPermission: 'products.manage',
     iconName: 'package',
-  },
-  create_raw_material: {
-    key: 'create_raw_material',
-    titleAr: 'إضافة خامات ومواد أولية',
-    titleEn: 'Add Raw Materials',
-    descriptionAr: 'يتطلب التصنيع والوصفات تسجيل المواد الأولية والخامات الداخلة في إعداد الأصناف.',
-    descriptionEn: 'Manufacturing and recipes require adding raw materials and inventory ingredients first.',
-    targetRoute: APP_ROUTES.rawMaterials,
-    actionLabelAr: 'الانتقال إلى الخامات',
-    actionLabelEn: 'Go to Raw Materials',
-    requiredPermission: 'raw_materials.manage',
-    iconName: 'flask',
-  },
-  create_recipe: {
-    key: 'create_recipe',
-    titleAr: 'بناء وصفة تصنيع (BOM)',
-    titleEn: 'Create Manufacturing Recipe',
-    descriptionAr: 'المنتج المصنع يتطلب تعريف وصفة مكونات (BOM) تحدد كميات الخامات المستهلكة ونسب الهدر.',
-    descriptionEn: 'Manufactured products require defining a recipe (Bill of Materials) for raw material consumption.',
-    targetRoute: APP_ROUTES.recipes,
-    actionLabelAr: 'الانتقال إلى الوصفات',
-    actionLabelEn: 'Go to Recipes',
-    requiredPermission: 'recipes.manage',
-    iconName: 'chefHat',
   },
   open_shift: {
     key: 'open_shift',
@@ -242,17 +218,12 @@ export function validateActionPrerequisites(
           reasonEn: 'Cannot complete purchase: no suppliers registered. Please add a supplier first.',
         };
       }
-      if (
-        typeof ctx.productsCount === 'number' &&
-        typeof ctx.rawMaterialsCount === 'number' &&
-        ctx.productsCount === 0 &&
-        ctx.rawMaterialsCount === 0
-      ) {
+      if (typeof ctx.productsCount === 'number' && ctx.productsCount === 0) {
         return {
           allowed: false,
           missingStep: PREREQUISITE_STEPS.create_product,
-          reasonAr: 'لا يمكن تسجيل الشراء لعدم وجود أي أصناف أو خامات مسجلة للشراء.',
-          reasonEn: 'Cannot record purchase: no products or raw materials available to purchase.',
+          reasonAr: 'لا يمكن تسجيل الشراء لعدم وجود أي أصناف مسجلة للشراء.',
+          reasonEn: 'Cannot record purchase: no products available to purchase.',
         };
       }
       break;
@@ -301,18 +272,6 @@ export function validateActionPrerequisites(
           missingStep: PREREQUISITE_STEPS.create_second_warehouse,
           reasonAr: 'لا يمكن التحويل المخزني لوجود أقل من مخزنين. يلزم وجود مخزن مصدر ومخزن وجهة.',
           reasonEn: 'Inventory transfer requires at least two active warehouses.',
-        };
-      }
-      break;
-    }
-
-    case 'recipe_create': {
-      if (typeof ctx.rawMaterialsCount === 'number' && ctx.rawMaterialsCount === 0) {
-        return {
-          allowed: false,
-          missingStep: PREREQUISITE_STEPS.create_raw_material,
-          reasonAr: 'يلزم أولاً تسجيل الخامات والمكونات الأولية لإضافتها في الوصفة.',
-          reasonEn: 'Please create raw materials and ingredients before assembling recipes.',
         };
       }
       break;

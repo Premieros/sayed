@@ -130,8 +130,6 @@ import { AuditLogPage } from '@/features/reporting/pages/AuditLogPage';
 import { SettingsControlCenterPage } from '@/features/admin/pages/SettingsControlCenterPage';
 import { ComponentsPage } from '@/features/catalog/pages/ComponentsPage';
 import { ShiftsPage } from '@/features/trade/pages/ShiftsPage';
-import { RawMaterialsPage } from '@/features/manufacturing/pages/RawMaterialsPage';
-import { RecipesPage } from '@/features/manufacturing/pages/RecipesPage';
 import { TransfersPage } from '@/features/inventory/pages/TransfersPage';
 import { InventoryLedgerPage } from '@/features/inventory/pages/InventoryLedgerPage';
 import { StockCountsPage } from '@/features/inventory/pages/StockCountsPage';
@@ -167,8 +165,6 @@ const pages: Array<[string, React.ComponentType]> = [
   ['SettingsControlCenterPage', SettingsControlCenterPage],
   ['ComponentsPage', ComponentsPage],
   ['ShiftsPage', ShiftsPage],
-  ['RawMaterialsPage', RawMaterialsPage],
-  ['RecipesPage', RecipesPage],
   ['TransfersPage', TransfersPage],
   ['InventoryLedgerPage', InventoryLedgerPage],
   ['StockCountsPage', StockCountsPage],

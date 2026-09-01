@@ -1,14 +1,11 @@
 export type ImportExportEntity =
   | 'products'
   | 'categories'
-  | 'components'
   | 'prices'
   | 'suppliers'
   | 'customers'
   | 'purchases'
   | 'opening_inventory'
-  | 'recipes'
-  | 'production'
   | 'transfers'
   | 'expenses'
   | 'users';

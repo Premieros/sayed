@@ -5,7 +5,6 @@ export type PurchaseStatus = 'draft' | 'submitted' | 'approved' | 'completed' | 
 
 export interface ProcurementLineInput {
   product_id?: string | null;
-  raw_material_id?: string | null;
   quantity: number;
   unit_name?: string;
   unit_cost?: number;
@@ -63,7 +62,6 @@ export interface SupplierQuotationRow {
 
 export interface RfqComparisonRow {
   item_id: string;
-  item_type: 'product' | 'raw_material';
   item_name: string;
   requested_quantity: number;
   best_supplier_id: string | null;
@@ -89,9 +87,7 @@ export interface PurchaseBackorderRow {
   supplier_name: string;
   purchase_item_id: string;
   product_id: string | null;
-  raw_material_id: string | null;
   item_name: string;
-  item_type: 'product' | 'raw_material';
   unit_name: string;
   ordered_quantity: number;
   received_quantity: number;

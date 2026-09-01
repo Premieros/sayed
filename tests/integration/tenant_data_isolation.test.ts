@@ -80,10 +80,9 @@ describe.skipIf(!dbUrl)('Phase 3 — Full Tenant Data Isolation', () => {
     crossTenantSuperAdmin(tbl, tbl);
   }
 
-  // ── Manufacturing tables ─────────────────────────────────────────────
+  // ── Inventory & transfer tables ────────────────────────────────────────
 
-  for (const tbl of ['raw_material_inventory', 'raw_material_batches', 'inventory_batches', 'inventory_ledger',
-    'production_orders', 'recipes', 'warehouse_transfers', 'production_waste']) {
+  for (const tbl of ['inventory_batches', 'inventory_ledger', 'warehouse_transfers']) {
     crossTenant(tbl, tbl);
     crossTenantSuperAdmin(tbl, tbl);
   }
@@ -123,7 +122,6 @@ describe.skipIf(!dbUrl)('Phase 3 — Full Tenant Data Isolation', () => {
     { table: 'bank_statement_lines', ownKey: 'bank_statement_lines' },
     { table: 'shift_operations',     ownKey: 'shift_operations' },
     { table: 'warehouse_transfer_items', ownKey: 'warehouse_transfer_items' },
-    { table: 'recipe_items',         ownKey: 'recipe_items' },
     { table: 'order_items',          ownKey: 'order_items' },
   ];
 

@@ -22,7 +22,7 @@ export function InventoryLedgerPage() {
 
   const { rows: rawRows, loading, error, total, hasMore, loadMore, loadingMore } = usePaginatedRows<InventoryLedgerEntry>({
     table: 'inventory_ledger',
-    select: '*, product:products(*), raw_material:raw_materials(*), warehouse:warehouses(*)',
+    select: '*, product:products(*), warehouse:warehouses(*)',
     order: { column: 'created_at', ascending: false },
     pageSize: 100,
   });
@@ -57,7 +57,6 @@ export function InventoryLedgerPage() {
     const q = search.toLowerCase();
     return (e.reference_number || '').toLowerCase().includes(q)
       || (e.product?.name || '').toLowerCase().includes(q)
-      || (e.raw_material?.name || '').toLowerCase().includes(q)
       || (e.batch_number || '').toLowerCase().includes(q);
   });
 
@@ -65,7 +64,7 @@ export function InventoryLedgerPage() {
     exportToExcel(filtered.map((r) => ({
       Date: r.entry.created_at,
       Type: entryTypes.find((x) => x.key === r.entry.entry_type)?.label || r.entry.entry_type,
-      Item: r.entry.product?.name || r.entry.raw_material?.name || '-',
+      Item: r.entry.product?.name || '-',
       Reference: r.entry.reference_number || '',
       Batch: r.entry.batch_number || '',
       Quantity: r.entry.quantity,
@@ -106,9 +105,8 @@ export function InventoryLedgerPage() {
           <BookOpenText className="w-4 h-4" />
         </div>
         <div>
-          <p className="font-medium text-ui-text">{r.entry.product?.name || r.entry.raw_material?.name || '-'}</p>
+          <p className="font-medium text-ui-text">{r.entry.product?.name || '-'}</p>
           {r.entry.product && <p className="text-xs text-purple-500 dark:text-purple-400">{t('product')}</p>}
-          {r.entry.raw_material && <p className="text-xs text-ui-success dark:text-ui-success">{t('rawMaterial')}</p>}
         </div>
       </div>
     )},
@@ -126,7 +124,7 @@ export function InventoryLedgerPage() {
 
   return (
     <DesignSurface testId="inventory-ledger-page">
-      <DesignPageHeader title={t('inventoryLedger')} subtitle={lang === 'ar' ? 'سجل كامل لحركات المخزون (منتجات ومواد خام)' : 'Full movement log for inventory (products and raw materials)'} actions={
+      <DesignPageHeader title={t('inventoryLedger')} subtitle={lang === 'ar' ? 'سجل كامل لحركات المخزون' : 'Full movement log for inventory'} actions={
         <button onClick={handleExport} className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-lg border border-ui-border hover:bg-ui-page-alt dark:hover:bg-ui-surface text-ui-text transition-all">
           {t('exportExcel')}
         </button>

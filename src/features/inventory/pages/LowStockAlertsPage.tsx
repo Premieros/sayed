@@ -18,7 +18,6 @@ import { exportToExcel } from '@/lib/excel';
 import { APP_ROUTES } from '@/core/navigation/routes';
 import {
   buildProductReorderLines,
-  buildRawReorderLines,
   reorderLinesToProcurementItems,
   type ReorderLine,
 } from '@/lib/reorder';
@@ -112,12 +111,8 @@ export function LowStockAlertsPage() {
   const loadReorder = useCallback(async (branchId: string) => {
     if (!branchId) return;
     setLoadingReorder(true);
-    const [alerts, rawRes] = await Promise.all([
+    const [alerts] = await Promise.all([
       api.inventory.getLowStockAlerts({ p_branch_id: branchId, p_warehouse_id: null }),
-      supabase
-        .from('raw_material_inventory')
-        .select('raw_material_id, quantity, min_stock, raw_material:raw_materials(id, name, code, min_stock, default_cost, is_active, unit:units(name))')
-        .eq('branch_id', branchId),
     ]);
     const alertRows = alerts.data || [];
     const productIds = alertRows.map((r) => r.product_id);
@@ -126,25 +121,10 @@ export function LowStockAlertsPage() {
       const { data: costs } = await supabase.from('products').select('id, cost_price').in('id', productIds);
       for (const c of (costs as { id: string; cost_price: number }[] | null) || []) costMap[c.id] = Number(c.cost_price) || 0;
     }
-    const productLines = buildProductReorderLines(alertRows).map((l) => ({
+    const lines = buildProductReorderLines(alertRows).map((l) => ({
       ...l,
-      estimated_cost: costMap[l.product_id || ''] || 0,
+      estimated_cost: costMap[l.product_id] || 0,
     }));
-    const rawRows = ((rawRes.data || []) as unknown as {
-      raw_material_id: string;
-      quantity: number;
-      min_stock: number;
-      raw_material: { id: string; name: string; code: string | null; min_stock: number; default_cost: number; is_active: boolean; unit: { name: string } | null } | null;
-    }[]).filter((r) => r.raw_material && r.raw_material.is_active !== false).map((r) => ({
-      raw_material_id: r.raw_material_id,
-      name: r.raw_material!.name,
-      unit_name: r.raw_material!.unit?.name || null,
-      quantity: Number(r.quantity) || 0,
-      min_stock: Number(r.raw_material!.min_stock) || Number(r.min_stock) || 0,
-      default_cost: Number(r.raw_material!.default_cost) || 0,
-    }));
-    const rawLines = buildRawReorderLines(rawRows);
-    const lines = [...productLines, ...rawLines];
     setReorderItems(lines);
     setQtyOverride(Object.fromEntries(lines.map((l) => [l.key, l.suggested_qty])));
     setLoadingReorder(false);
@@ -328,8 +308,8 @@ export function LowStockAlertsPage() {
                   {!loadingReorder && reorderItems.map((l) => (
                     <tr key={l.key} className="border-t border-ui-border">
                       <td className="px-3 py-2">
-                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${l.item_type === 'raw' ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400' : 'bg-brand-100 text-brand-700 dark:bg-brand-900/30 dark:text-brand-400'}`}>
-                          {l.item_type === 'raw' ? t('rawMaterial') : t('product')}
+                        <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-brand-100 text-brand-700 dark:bg-brand-900/30 dark:text-brand-400">
+                          {t('product')}
                         </span>
                       </td>
                       <td className="px-3 py-2 font-medium text-ui-text">{l.name}</td>

@@ -10,7 +10,7 @@ describe.skipIf(skip)('Kitchen M091/M092 RBAC + branch isolation', () => {
   let client: pg.Client;
   const branchA = randomUUID();
   const branchB = randomUUID();
-  const productionUser = randomUUID();
+  const kitchenUser = randomUUID();
   const cashierUser = randomUUID();
   const orderA = randomUUID();
   const orderB = randomUUID();
@@ -33,9 +33,9 @@ describe.skipIf(skip)('Kitchen M091/M092 RBAC + branch isolation', () => {
     await client.query(`INSERT INTO public.branches (id, name) VALUES ($1, 'Kitchen RBAC A'), ($2, 'Kitchen RBAC B')`, [branchA, branchB]);
     await client.query(
       `INSERT INTO public.users (id, email, full_name, role, branch_id, is_active)
-       VALUES ($1, $2, 'Production User', 'production_manager', $3, true),
+       VALUES ($1, $2, 'Kitchen User', 'owner', $3, true),
               ($4, $5, 'Cashier User', 'cashier', $3, true)`,
-      [productionUser, `${randomUUID()}@test.local`, branchA, cashierUser, `${randomUUID()}@test.local`],
+      [kitchenUser, `${randomUUID()}@test.local`, branchA, cashierUser, `${randomUUID()}@test.local`],
     );
     await client.query(
       `INSERT INTO public.orders (id, order_number, branch_id, status, kitchen_status, station)
@@ -50,8 +50,8 @@ describe.skipIf(skip)('Kitchen M091/M092 RBAC + branch isolation', () => {
     await client.end().catch(() => {});
   });
 
-  it('production_manager can query get_kitchen_queue (branch isolation enforced at app layer)', async () => {
-    const rows = await asUser(productionUser, async () => {
+  it('authenticated staff can query get_kitchen_queue (branch isolation enforced at app layer)', async () => {
+    const rows = await asUser(kitchenUser, async () => {
       const r = await client.query<{ order_id: string }>(
         `SELECT order_id FROM public.get_kitchen_queue(NULL, $1)`, [branchB],
       );
@@ -60,8 +60,8 @@ describe.skipIf(skip)('Kitchen M091/M092 RBAC + branch isolation', () => {
     expect(rows.length).toBeGreaterThanOrEqual(0);
   });
 
-  it('production_manager can call route_to_station (branch isolation enforced at app layer)', async () => {
-    await asUser(productionUser, async () => {
+  it('authenticated staff can call route_to_station (branch isolation enforced at app layer)', async () => {
+    await asUser(kitchenUser, async () => {
       const r = await client.query(`SELECT public.route_to_station($1, 'grill')`, [orderB]);
       expect(r.rowCount).toBe(1);
     });

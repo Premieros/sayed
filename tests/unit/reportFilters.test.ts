@@ -40,7 +40,6 @@ describe('reportFilters (ERP-01 §6)', () => {
       expect(REPORT_FILTER_DIMS[type], `${type} is date-driven`).toBeDefined();
     }
     expect(DATE_DRIVEN_REPORTS.has('inventory')).toBe(false);
-    expect(DATE_DRIVEN_REPORTS.has('recipe_costs')).toBe(false);
     expect(DATE_DRIVEN_REPORTS.has('low_stock')).toBe(false);
   });
 
