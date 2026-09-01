@@ -1,16 +1,7 @@
 {
-  "generated_at": "2026-08-29T20:40:59.753Z",
+  "generated_at": "2026-09-01T11:30:59.624Z",
   "source": "scripts/db/gen-contract.js (extracted from src/api/domains + src)",
   "rpcs": [
-    {
-      "name": "activate_subscription",
-      "params": [
-        "activate",
-        "billing_period",
-        "branch_id",
-        "plan_id"
-      ]
-    },
     {
       "name": "add_inventory_batch",
       "params": [
@@ -43,15 +34,6 @@
         "product_id",
         "reason",
         "stock_count_id"
-      ]
-    },
-    {
-      "name": "adjust_raw_stock",
-      "params": [
-        "branch_id",
-        "new_quantity",
-        "raw_material_id",
-        "reason"
       ]
     },
     {
@@ -94,10 +76,10 @@
       ]
     },
     {
-      "name": "cancel_production_order",
+      "name": "can_create_new_user",
       "params": [
-        "order_id",
-        "reason"
+        "branch_id",
+        "tenant_id"
       ]
     },
     {
@@ -112,13 +94,6 @@
       "name": "complete_bank_reconciliation",
       "params": [
         "reconciliation_id"
-      ]
-    },
-    {
-      "name": "complete_production_order",
-      "params": [
-        "order_id",
-        "waste"
       ]
     },
     {
@@ -156,18 +131,6 @@
         "name_en",
         "organization_id",
         "phone"
-      ]
-    },
-    {
-      "name": "create_production_order",
-      "params": [
-        "batch_number",
-        "branch_id",
-        "notes",
-        "planned_at",
-        "product_id",
-        "quantity",
-        "warehouse_id"
       ]
     },
     {
@@ -446,6 +409,12 @@
       ]
     },
     {
+      "name": "get_system_settings",
+      "params": [
+        "key"
+      ]
+    },
+    {
       "name": "get_treasury_balances",
       "params": [
         "branch_id"
@@ -700,6 +669,13 @@
       ]
     },
     {
+      "name": "set_system_setting",
+      "params": [
+        "key",
+        "value"
+      ]
+    },
+    {
       "name": "set_table_status",
       "params": [
         "status",
@@ -707,21 +683,9 @@
       ]
     },
     {
-      "name": "start_production_order",
-      "params": [
-        "order_id"
-      ]
-    },
-    {
       "name": "submit_stock_count",
       "params": [
         "stock_count_id"
-      ]
-    },
-    {
-      "name": "subscription_status",
-      "params": [
-        "branch_id"
       ]
     },
     {
@@ -794,7 +758,6 @@
   "tables": [
     "audit_log",
     "branch_settings",
-    "branch_subscriptions",
     "branches",
     "categories",
     "chart_of_accounts",
@@ -805,8 +768,6 @@
     "inventory",
     "inventory_batches",
     "inventory_movements",
-    "inventory_unit_productions",
-    "inventory_unit_recipes",
     "inventory_units",
     "kitchen_stations",
     "measurement_units",
@@ -815,37 +776,23 @@
     "orders",
     "organization_members",
     "organizations",
-    "plan_features",
-    "plan_prices",
-    "plans",
+    "payments",
     "product_components",
     "product_unit_links",
     "product_units",
-    "production_waste",
     "products",
     "purchase_items",
     "purchase_request_items",
     "purchase_requests",
     "purchases",
-    "raw_material_batches",
-    "raw_material_inventory",
-    "raw_material_movements",
-    "raw_materials",
-    "recipe_items",
-    "recipes",
     "roles",
     "sale_items",
     "sales",
     "settings",
     "stock_transactions",
-    "subscription_payments",
-    "subscription_plans",
-    "subscriptions",
     "suppliers",
     "treasury_accounts",
     "users",
-    "warehouses",
-    "waste_categories",
-    "waste_entries"
+    "warehouses"
   ]
 }
