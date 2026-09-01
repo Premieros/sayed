@@ -72,8 +72,7 @@ $$;
 ALTER TABLE public.users DISABLE TRIGGER trg_users_role_guard;
 
 UPDATE public.users
-SET role = 'warehouse_manager',
-    updated_at = now()
+SET role = 'warehouse_manager'
 WHERE role = 'production_manager';
 
 ALTER TABLE public.users ENABLE TRIGGER trg_users_role_guard;
